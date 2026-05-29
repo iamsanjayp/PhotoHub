@@ -5,6 +5,7 @@ import { QueryProvider } from '@/providers/query-provider'
 import { AuthProvider } from '@/providers/auth-provider'
 import { getCurrentProfile } from '@/actions/auth'
 import { Toaster } from 'sonner'
+import { ScrollLockFixer } from '@/components/scroll-lock-fixer'
 
 const inter = Inter({ subsets: ['latin'] })
 
@@ -38,6 +39,7 @@ export default async function RootLayout({
     <html lang="en" className="dark" suppressHydrationWarning>
       <head />
       <body className={`${inter.className} min-h-screen antialiased`}>
+        <ScrollLockFixer />
         <QueryProvider>
           <AuthProvider initialProfile={profile}>
             {children}
