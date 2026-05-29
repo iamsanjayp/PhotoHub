@@ -96,11 +96,6 @@ export default function LandingPage() {
                 <ArrowRight className="h-4 w-4 transition-transform group-hover:translate-x-1" />
               </Link>
             </Button>
-            <Button asChild variant="outline" className="h-12 px-8 border-white/10 hover:bg-white/5 hover:text-white text-neutral-300 font-bold rounded-xl">
-              <Link href="/login">
-                Member Sign In
-              </Link>
-            </Button>
           </motion.div>
         </div>
 

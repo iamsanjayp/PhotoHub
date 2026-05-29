@@ -5,7 +5,6 @@ import type { Profile } from '@/types/database'
 import { Button } from '@/components/ui/button'
 import { ArrowRight, LayoutDashboard, LogIn } from 'lucide-react'
 
-import { ThemeToggle } from '@/components/theme-toggle'
 
 export default function PublicNavbar({ profile }: { profile: Profile | null }) {
   return (
@@ -20,8 +19,6 @@ export default function PublicNavbar({ profile }: { profile: Profile | null }) {
  
       {/* Action buttons */}
       <div className="flex items-center gap-3 md:gap-4">
-        <ThemeToggle />
-
         <Button asChild variant="outline" className="hidden md:inline-flex h-10 border-neutral-200 dark:border-white/10 hover:bg-neutral-100 dark:hover:bg-white/5 text-neutral-600 dark:text-neutral-300 font-semibold rounded-xl text-xs md:text-sm">
           <Link href="/apex-request">Request Coverage (APEX)</Link>
         </Button>

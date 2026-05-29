@@ -36,24 +36,7 @@ export default async function RootLayout({
 
   return (
     <html lang="en" className="dark" suppressHydrationWarning>
-      <head>
-        <script
-          dangerouslySetInnerHTML={{
-            __html: `
-              (function() {
-                try {
-                  const theme = localStorage.getItem('theme');
-                  if (theme === 'light') {
-                    document.documentElement.classList.remove('dark');
-                  } else {
-                    document.documentElement.classList.add('dark');
-                  }
-                } catch (e) {}
-              })();
-            `
-          }}
-        />
-      </head>
+      <head />
       <body className={`${inter.className} min-h-screen antialiased`}>
         <QueryProvider>
           <AuthProvider initialProfile={profile}>

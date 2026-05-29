@@ -281,6 +281,10 @@ export default function MyAssignmentsPage() {
                                 info.public_id
                               )
                             }}
+                            onClose={() => {
+                              document.body.style.overflow = '';
+                              document.body.style.pointerEvents = '';
+                            }}
                           >
                             {({ open }) => (
                               <Button

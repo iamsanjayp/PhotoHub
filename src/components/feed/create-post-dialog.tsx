@@ -140,6 +140,10 @@ export default function CreatePostDialog() {
             <CldUploadWidget
               uploadPreset="photohub_unsigned"
               onSuccess={handleUploadSuccess}
+              onClose={() => {
+                document.body.style.overflow = '';
+                document.body.style.pointerEvents = '';
+              }}
             >
               {({ open }) => (
                 <Button

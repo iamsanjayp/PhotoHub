@@ -27,7 +27,6 @@ import {
 import Sidebar from '@/components/layout/sidebar'
 import AdminSidebar from '@/components/layout/admin-sidebar'
 
-import { ThemeToggle } from '@/components/theme-toggle'
 
 export default function Header({ profile }: { profile: Profile }) {
   const [unreadCount, setUnreadCount] = useState(0)
@@ -120,11 +119,7 @@ export default function Header({ profile }: { profile: Profile }) {
         />
       </div>
 
-      {/* Actions */}
       <div className="flex items-center gap-4">
-        {/* Theme Toggle */}
-        <ThemeToggle />
-
         {/* Notifications Bell */}
         <Link href="/notifications" className="relative">
           <Button variant="ghost" size="icon" className="h-10 w-10 text-neutral-400 hover:text-white dark:hover:text-white hover:bg-neutral-100 dark:hover:bg-white/5 rounded-xl">
