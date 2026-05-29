@@ -257,12 +257,12 @@ export default function AdminEventDashboard({
 
       {/* Tabs Menu */}
       <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
-        <TabsList className="grid grid-cols-5 w-full bg-black/40 border border-white/5 rounded-xl p-1 max-w-2xl h-11 text-xs">
-          <TabsTrigger value="overview" className="rounded-lg py-2 font-bold data-[state=active]:bg-cyan-500 data-[state=active]:text-black text-white/70">Overview</TabsTrigger>
-          <TabsTrigger value="attendance" className="rounded-lg py-2 font-bold data-[state=active]:bg-cyan-500 data-[state=active]:text-black text-white/70">Attendance</TabsTrigger>
-          <TabsTrigger value="submissions" className="rounded-lg py-2 font-bold data-[state=active]:bg-cyan-500 data-[state=active]:text-black text-white/70">Submissions</TabsTrigger>
-          <TabsTrigger value="winners" className="rounded-lg py-2 font-bold data-[state=active]:bg-cyan-500 data-[state=active]:text-black text-white/70">Winners</TabsTrigger>
-          <TabsTrigger value="analytics" className="rounded-lg py-2 font-bold data-[state=active]:bg-cyan-500 data-[state=active]:text-black text-white/70">Analytics</TabsTrigger>
+        <TabsList className="bg-black/40 border border-white/5 rounded-xl p-1 max-w-2xl h-11 text-xs flex overflow-x-auto whitespace-nowrap scrollbar-none w-full">
+          <TabsTrigger value="overview" className="rounded-lg py-2 px-4 font-bold data-[state=active]:bg-cyan-500 data-[state=active]:text-black text-white/70 flex-none">Overview</TabsTrigger>
+          <TabsTrigger value="attendance" className="rounded-lg py-2 px-4 font-bold data-[state=active]:bg-cyan-500 data-[state=active]:text-black text-white/70 flex-none">Attendance</TabsTrigger>
+          <TabsTrigger value="submissions" className="rounded-lg py-2 px-4 font-bold data-[state=active]:bg-cyan-500 data-[state=active]:text-black text-white/70 flex-none">Submissions</TabsTrigger>
+          <TabsTrigger value="winners" className="rounded-lg py-2 px-4 font-bold data-[state=active]:bg-cyan-500 data-[state=active]:text-black text-white/70 flex-none">Winners</TabsTrigger>
+          <TabsTrigger value="analytics" className="rounded-lg py-2 px-4 font-bold data-[state=active]:bg-cyan-500 data-[state=active]:text-black text-white/70 flex-none">Analytics</TabsTrigger>
         </TabsList>
 
         {/* Tab 1: Overview */}

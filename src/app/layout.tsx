@@ -35,8 +35,26 @@ export default async function RootLayout({
   const profile = await getCurrentProfile()
 
   return (
-    <html lang="en" className="dark">
-      <body className={`${inter.className} bg-[#0A0A0A] text-foreground min-h-screen antialiased`}>
+    <html lang="en" className="dark" suppressHydrationWarning>
+      <head>
+        <script
+          dangerouslySetInnerHTML={{
+            __html: `
+              (function() {
+                try {
+                  const theme = localStorage.getItem('theme');
+                  if (theme === 'light') {
+                    document.documentElement.classList.remove('dark');
+                  } else {
+                    document.documentElement.classList.add('dark');
+                  }
+                } catch (e) {}
+              })();
+            `
+          }}
+        />
+      </head>
+      <body className={`${inter.className} min-h-screen antialiased`}>
         <QueryProvider>
           <AuthProvider initialProfile={profile}>
             {children}

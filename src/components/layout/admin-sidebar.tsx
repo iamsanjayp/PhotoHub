@@ -92,65 +92,47 @@ export default function AdminSidebar({ profile, isMobile = false }: { profile: P
     <aside
       className={cn(
         isMobile
-          ? 'flex flex-col h-full bg-[#0A0A0A] text-foreground select-none'
-          : 'hidden md:flex flex-col h-screen sticky top-0 border-r border-cyan-500/10 bg-[#0A0A0A] transition-all duration-300 z-40 shrink-0 select-none shadow-lg shadow-cyan-950/5',
+          ? 'flex flex-col h-full bg-sidebar text-foreground select-none'
+          : 'hidden md:flex flex-col h-screen sticky top-0 border-r border-neutral-200 dark:border-cyan-500/10 bg-sidebar transition-all duration-300 z-40 shrink-0 select-none shadow-lg shadow-cyan-950/5',
         !isMobile && (collapsed ? 'w-16' : 'w-64')
       )}
     >
       {/* Admin Sidebar Header */}
-      <div className="h-16 flex items-center justify-between px-4 border-b border-cyan-500/10">
+      <div className="h-16 flex items-center justify-between px-4 border-b border-neutral-200 dark:border-cyan-500/10">
         <Link href="/admin" className="flex items-center gap-3 overflow-hidden">
-          <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-gradient-to-tr from-cyan-500 to-teal-500 shadow-md shadow-cyan-500/10">
-            <svg className="h-5 w-5 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-              <path strokeLinecap="round" strokeLinejoin="round" d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z" />
-            </svg>
-          </div>
+          <img src="/logo.png" alt="PhotoHub Logo" className="h-9 w-9 rounded-xl object-cover shrink-0 shadow-md shadow-cyan-500/10" />
           {!isCollapsed && (
             <div className="flex flex-col">
-              <span className="font-extrabold text-sm tracking-tight text-white leading-none">PhotoHub</span>
+              <span className="font-extrabold text-sm tracking-tight text-neutral-800 dark:text-white leading-none">PhotoHub</span>
               <span className="text-[10px] font-bold text-cyan-400 mt-0.5 tracking-wider uppercase">Admin Portal</span>
             </div>
           )}
         </Link>
-        {!collapsed && !isMobile && (
+        {!isMobile && (
           <Button
             variant="ghost"
             size="icon"
-            onClick={() => setIsCollapsed(true)}
-            className="h-8 w-8 text-neutral-500 hover:text-cyan-400 hover:bg-cyan-500/5 rounded-lg"
+            onClick={() => setIsCollapsed(!collapsed)}
+            className="h-8 w-8 text-neutral-450 hover:text-neutral-800 dark:hover:text-white hover:bg-neutral-100 dark:hover:bg-white/5 rounded-lg hidden md:flex items-center justify-center shrink-0"
           >
-            <ChevronLeft className="h-4 w-4" />
+            {collapsed ? <ChevronRight className="h-4 w-4" /> : <ChevronLeft className="h-4 w-4" />}
           </Button>
         )}
       </div>
 
-      {/* Collapse button for small width */}
-      {collapsed && !isMobile && (
-        <div className="flex justify-center py-2 border-b border-cyan-500/10">
-          <Button
-            variant="ghost"
-            size="icon"
-            onClick={() => setIsCollapsed(false)}
-            className="h-8 w-8 text-neutral-500 hover:text-cyan-400 hover:bg-cyan-500/5 rounded-lg"
-          >
-            <ChevronRight className="h-4 w-4" />
-          </Button>
-        </div>
-      )}
-
       {/* Back to User Dashboard Link */}
-      <div className="p-2 border-b border-white/5">
+      <div className="p-2 border-b border-neutral-200 dark:border-white/5">
         <Link
           href="/dashboard"
           className={cn(
-            'flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-semibold transition-all duration-200 bg-white/5 text-white hover:bg-white/10 outline-none',
+            'flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-semibold transition-all duration-200 bg-neutral-100 dark:bg-white/5 text-neutral-800 dark:text-white hover:bg-neutral-200 dark:hover:bg-white/10 outline-none border border-neutral-250 dark:border-transparent',
             collapsed ? 'justify-center' : ''
           )}
         >
           <ArrowLeft className="h-4 w-4 shrink-0 text-cyan-400 animate-pulse" />
           {!collapsed && <span>User Dashboard</span>}
           {collapsed && (
-            <div className="absolute left-16 scale-0 rounded-lg border border-white/5 bg-neutral-950 px-2 py-1 text-xs font-medium text-white shadow-xl transition-all group-hover:scale-100 whitespace-nowrap z-50">
+            <div className="absolute left-16 scale-0 rounded-lg border border-neutral-200 dark:border-white/5 bg-popover px-2 py-1 text-xs font-medium text-foreground shadow-xl transition-all group-hover:scale-100 whitespace-nowrap z-50">
               User Dashboard
             </div>
           )}
@@ -158,7 +140,7 @@ export default function AdminSidebar({ profile, isMobile = false }: { profile: P
       </div>
 
       {/* Navigation Links */}
-      <nav className="flex-1 py-4 px-2 space-y-1 overflow-y-auto custom-scrollbar">
+      <nav className="flex-1 py-4 px-2 space-y-1 overflow-y-auto scrollbar-none">
         {adminItems.map((item) => {
           const isActive = pathname === item.href || (item.href !== '/admin' && pathname.startsWith(`${item.href}/`))
           const Icon = item.icon
@@ -171,7 +153,7 @@ export default function AdminSidebar({ profile, isMobile = false }: { profile: P
                 'group relative flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-semibold transition-all duration-200 outline-none',
                 isActive
                   ? 'bg-cyan-500/10 text-cyan-400 border border-cyan-500/20'
-                  : 'text-neutral-400 hover:text-white hover:bg-white/[0.02]'
+                  : 'text-neutral-500 hover:text-neutral-800 hover:bg-neutral-100 dark:text-neutral-400 dark:hover:text-white dark:hover:bg-white/[0.02]'
               )}
             >
               {/* Active Accent indicator */}
@@ -183,12 +165,12 @@ export default function AdminSidebar({ profile, isMobile = false }: { profile: P
                 />
               )}
 
-              <Icon className={cn('h-5 w-5 shrink-0 transition-transform duration-200 group-hover:scale-105', isActive ? 'text-cyan-400' : 'text-neutral-500 group-hover:text-neutral-300')} />
+              <Icon className={cn('h-5 w-5 shrink-0 transition-transform duration-200 group-hover:scale-105', isActive ? 'text-cyan-400' : 'text-neutral-500 group-hover:text-neutral-700 dark:group-hover:text-neutral-300')} />
               {!collapsed && <span className="truncate">{item.label}</span>}
               
               {/* Tooltip for collapsed mode */}
               {collapsed && (
-                <div className="absolute left-16 scale-0 rounded-lg border border-cyan-500/10 bg-neutral-950 px-2 py-1 text-xs font-medium text-white shadow-xl transition-all group-hover:scale-100 whitespace-nowrap z-50">
+                <div className="absolute left-16 scale-0 rounded-lg border border-neutral-200 dark:border-cyan-500/10 bg-popover px-2 py-1 text-xs font-medium text-foreground shadow-xl transition-all group-hover:scale-100 whitespace-nowrap z-50">
                   {item.label}
                 </div>
               )}
@@ -198,11 +180,11 @@ export default function AdminSidebar({ profile, isMobile = false }: { profile: P
       </nav>
 
       {/* Sidebar Footer */}
-      <div className="p-2 border-t border-cyan-500/10 bg-black/10">
+      <div className="p-2 border-t border-neutral-200 dark:border-cyan-500/10 bg-black/[0.02] dark:bg-black/10">
         {!collapsed ? (
           <div className="flex flex-col gap-2">
             <div className="flex items-center gap-3 px-2 py-1.5">
-              <div className="h-9 w-9 rounded-xl bg-neutral-800 flex items-center justify-center shrink-0 border border-white/5 overflow-hidden">
+              <div className="h-9 w-9 rounded-xl bg-neutral-100 dark:bg-neutral-800 flex items-center justify-center shrink-0 border border-neutral-200 dark:border-white/5 overflow-hidden">
                 {profile.avatar_url && profile.avatar_url.trim() !== '' ? (
                   <img src={profile.avatar_url} alt="avatar" className="h-full w-full object-cover" />
                 ) : (
@@ -210,7 +192,7 @@ export default function AdminSidebar({ profile, isMobile = false }: { profile: P
                 )}
               </div>
               <div className="flex-1 min-w-0">
-                <p className="text-xs font-bold text-white truncate">{profile.full_name || 'Admin'}</p>
+                <p className="text-xs font-bold text-neutral-800 dark:text-white truncate">{profile.full_name || 'Admin'}</p>
                 <p className="text-[10px] text-cyan-400 truncate capitalize font-bold">{profile.role}</p>
               </div>
             </div>
@@ -229,10 +211,10 @@ export default function AdminSidebar({ profile, isMobile = false }: { profile: P
               onClick={handleSignOut}
               variant="ghost"
               size="icon"
-              className="h-10 w-10 text-red-500 hover:text-red-400 hover:bg-red-500/5 rounded-xl group relative"
+              className="h-10 w-10 text-red-500 hover:text-red-450 hover:bg-red-500/5 rounded-xl group relative"
             >
               <LogOut className="h-5 w-5 shrink-0" />
-              <div className="absolute left-16 scale-0 rounded-lg border border-white/5 bg-neutral-950 px-2 py-1 text-xs font-medium text-white shadow-xl transition-all group-hover:scale-100 whitespace-nowrap z-50">
+              <div className="absolute left-16 scale-0 rounded-lg border border-neutral-200 dark:border-white/5 bg-popover px-2 py-1 text-xs font-medium text-foreground shadow-xl transition-all group-hover:scale-100 whitespace-nowrap z-50">
                 Sign Out
               </div>
             </Button>

@@ -54,6 +54,7 @@ export default function AdminChallengeDetailPage({
   const [selectedSubmission, setSelectedSubmission] = useState<any>(null)
   const [scoreValue, setScoreValue] = useState('')
   const [feedbackValue, setFeedbackValue] = useState('')
+  const [previewImage, setPreviewImage] = useState<string | null>(null)
 
   // Fetch challenge details
   const { data: challengeRes, isLoading: challengeLoading } = useQuery({
@@ -316,173 +317,305 @@ export default function AdminChallengeDetailPage({
               <p className="text-sm text-neutral-500">No members have submitted to this challenge yet.</p>
             </div>
           ) : (
-            <div className="overflow-x-auto">
-              <table className="w-full text-left border-collapse">
-                <thead>
-                  <tr className="border-b border-white/5 text-xs font-bold uppercase tracking-wider text-neutral-400 bg-white/[0.01]">
-                    <th className="py-4 px-6">Member</th>
-                    <th className="py-4 px-6">Submitted</th>
-                    <th className="py-4 px-6">Content</th>
-                    <th className="py-4 px-6 text-center">Status</th>
-                    <th className="py-4 px-6 text-center">Score</th>
-                    <th className="py-4 px-6 text-right">Actions</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-white/5 text-sm">
-                  {submissions.map((submission: any) => {
-                    const profile = submission.profiles
-                    const initials = profile
-                      ? (profile.full_name || profile.username || '?')
-                          .split(' ')
-                          .map((w: string) => w[0])
-                          .join('')
-                          .toUpperCase()
-                          .slice(0, 2)
-                      : '?'
+            <>
+              {/* Desktop Table View */}
+              <div className="hidden md:block overflow-x-auto">
+                <table className="w-full text-left border-collapse">
+                  <thead>
+                    <tr className="border-b border-neutral-200 dark:border-white/5 text-xs font-bold uppercase tracking-wider text-neutral-450 dark:text-neutral-400 bg-white/[0.01]">
+                      <th className="py-4 px-6">Member</th>
+                      <th className="py-4 px-6">Submitted</th>
+                      <th className="py-4 px-6">Content</th>
+                      <th className="py-4 px-6 text-center">Status</th>
+                      <th className="py-4 px-6 text-center">Score</th>
+                      <th className="py-4 px-6 text-right">Actions</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-neutral-200 dark:divide-white/5 text-sm">
+                    {submissions.map((submission: any) => {
+                      const profile = submission.profiles
+                      const initials = profile
+                        ? (profile.full_name || profile.username || '?')
+                            .split(' ')
+                            .map((w: string) => w[0])
+                            .join('')
+                            .toUpperCase()
+                            .slice(0, 2)
+                        : '?'
 
-                    return (
-                      <tr
-                        key={submission.id}
-                        className="hover:bg-white/[0.01] transition-colors group"
-                      >
-                        {/* Member */}
-                        <td className="py-4 px-6">
-                          <div className="flex items-center gap-3">
-                            <Avatar className="h-8 w-8 border border-white/10">
-                              <AvatarImage
-                                src={profile?.avatar_url || ''}
-                                alt={profile?.full_name || ''}
-                              />
-                              <AvatarFallback className="bg-neutral-800 text-neutral-400 text-xs font-bold">
-                                {initials}
-                              </AvatarFallback>
-                            </Avatar>
-                            <div className="min-w-0">
-                              <p className="font-semibold text-white truncate text-sm">
-                                {profile?.full_name || profile?.username || 'Unknown'}
-                              </p>
-                              {profile?.username && profile?.full_name && (
-                                <p className="text-[11px] text-neutral-500 truncate">
-                                  @{profile.username}
+                      return (
+                        <tr
+                          key={submission.id}
+                          className="hover:bg-neutral-50 dark:hover:bg-white/[0.01] transition-colors group"
+                        >
+                          {/* Member */}
+                          <td className="py-4 px-6">
+                            <div className="flex items-center gap-3">
+                              <Avatar className="h-8 w-8 border border-neutral-200 dark:border-white/10">
+                                <AvatarImage
+                                  src={profile?.avatar_url || ''}
+                                  alt={profile?.full_name || ''}
+                                />
+                                <AvatarFallback className="bg-neutral-800 text-neutral-450 dark:text-neutral-400 text-xs font-bold">
+                                  {initials}
+                                </AvatarFallback>
+                              </Avatar>
+                              <div className="min-w-0">
+                                <p className="font-semibold text-neutral-800 dark:text-white truncate text-sm">
+                                  {profile?.full_name || profile?.username || 'Unknown'}
                                 </p>
-                              )}
+                                {profile?.username && profile?.full_name && (
+                                  <p className="text-[11px] text-neutral-500 truncate">
+                                    @{profile.username}
+                                  </p>
+                                )}
+                              </div>
                             </div>
+                          </td>
+
+                          {/* Date */}
+                          <td className="py-4 px-6">
+                            <p className="text-neutral-700 dark:text-neutral-300 text-xs">
+                              {format(new Date(submission.created_at), 'MMM d, yyyy')}
+                            </p>
+                            <p className="text-neutral-450 dark:text-neutral-500 text-[11px]">
+                              {format(new Date(submission.created_at), 'h:mm a')}
+                            </p>
+                          </td>
+
+                          {/* Content Preview */}
+                          <td className="py-4 px-6">
+                            {submission.content_type === 'image' && submission.content_url ? (
+                              <div className="flex items-center gap-2">
+                                <button
+                                  onClick={() => setPreviewImage(submission.content_url)}
+                                  className="h-10 w-10 rounded-lg overflow-hidden border border-neutral-250 dark:border-white/5 bg-neutral-900 shrink-0 cursor-zoom-in hover:opacity-85 transition-opacity"
+                                  title="Click to expand"
+                                >
+                                  <img
+                                    src={submission.content_url}
+                                    alt="Submission"
+                                    className="h-full w-full object-cover"
+                                  />
+                                </button>
+                                <ImageIcon className="h-3.5 w-3.5 text-neutral-400 dark:text-neutral-500 shrink-0" />
+                              </div>
+                            ) : submission.external_link || submission.content_url ? (
+                              <a
+                                href={submission.external_link || submission.content_url}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                className="inline-flex items-center gap-1.5 text-cyan-550 dark:text-cyan-400 hover:text-cyan-305 dark:hover:text-cyan-300 text-xs font-medium transition-colors"
+                              >
+                                <ExternalLink className="h-3.5 w-3.5" />
+                                View Link
+                              </a>
+                            ) : submission.caption ? (
+                              <p className="text-neutral-500 dark:text-neutral-400 text-xs truncate max-w-[150px]">
+                                {submission.caption}
+                              </p>
+                            ) : (
+                              <span className="text-neutral-400 dark:text-neutral-600 text-xs">No content</span>
+                            )}
+                          </td>
+
+                          {/* Status */}
+                          <td className="py-4 px-6 text-center">
+                            <StatusBadge status={submission.status} />
+                          </td>
+
+                          {/* Score */}
+                          <td className="py-4 px-6 text-center">
+                            {submission.score != null ? (
+                              <span className="text-sm font-bold text-cyan-500 dark:text-cyan-400">
+                                {submission.score}
+                                <span className="text-neutral-550 dark:text-neutral-600 font-normal">/100</span>
+                              </span>
+                            ) : (
+                              <span className="text-neutral-450 dark:text-neutral-655 text-xs">—</span>
+                            )}
+                          </td>
+
+                          {/* Actions */}
+                          <td className="py-4 px-6">
+                            <div className="flex items-center justify-end gap-1">
+                              {submission.status !== 'approved' && (
+                                <Button
+                                  onClick={() =>
+                                    statusMutation.mutate({
+                                      id: submission.id,
+                                      status: 'approved',
+                                    })
+                                  }
+                                  disabled={statusMutation.isPending}
+                                  size="icon"
+                                  variant="ghost"
+                                  className="h-8 w-8 hover:bg-green-500/10 hover:text-green-500 dark:hover:text-green-400 rounded-lg text-neutral-450 dark:text-neutral-400"
+                                  title="Approve"
+                                >
+                                  <ThumbsUp className="h-4 w-4" />
+                                </Button>
+                              )}
+                              {submission.status !== 'rejected' && (
+                                <Button
+                                  onClick={() =>
+                                    statusMutation.mutate({
+                                      id: submission.id,
+                                      status: 'rejected',
+                                    })
+                                  }
+                                  disabled={statusMutation.isPending}
+                                  size="icon"
+                                  variant="ghost"
+                                  className="h-8 w-8 hover:bg-red-500/10 hover:text-red-500 dark:hover:text-red-400 rounded-lg text-neutral-450 dark:text-neutral-400"
+                                  title="Reject"
+                                >
+                                  <ThumbsDown className="h-4 w-4" />
+                                </Button>
+                              )}
+                              <Button
+                                onClick={() => openScoreDialog(submission)}
+                                size="icon"
+                                variant="ghost"
+                                className="h-8 w-8 hover:bg-purple-500/10 hover:text-purple-500 dark:hover:text-purple-400 rounded-lg text-neutral-450 dark:text-neutral-400"
+                                title="Score"
+                              >
+                                <Star className="h-4 w-4" />
+                              </Button>
+                            </div>
+                          </td>
+                        </tr>
+                      )
+                    })}
+                  </tbody>
+                </table>
+              </div>
+
+              {/* Mobile Card Grid View */}
+              <div className="md:hidden flex flex-col divide-y divide-neutral-200 dark:divide-white/5">
+                {submissions.map((submission: any) => {
+                  const profile = submission.profiles
+                  const initials = profile
+                    ? (profile.full_name || profile.username || '?')
+                        .split(' ')
+                        .map((w: string) => w[0])
+                        .join('')
+                        .toUpperCase()
+                        .slice(0, 2)
+                    : '?'
+
+                  return (
+                    <div key={submission.id} className="p-4 space-y-4">
+                      {/* Header: Profile Info */}
+                      <div className="flex items-center justify-between">
+                        <div className="flex items-center gap-3">
+                          <Avatar className="h-9 w-9 border border-neutral-200 dark:border-white/10">
+                            <AvatarImage src={profile?.avatar_url || ''} alt={profile?.full_name || ''} />
+                            <AvatarFallback className="bg-neutral-800 text-neutral-400 text-xs font-bold">{initials}</AvatarFallback>
+                          </Avatar>
+                          <div className="min-w-0">
+                            <p className="font-bold text-neutral-850 dark:text-white text-sm">
+                              {profile?.full_name || profile?.username || 'Unknown'}
+                            </p>
+                            {profile?.username && profile?.full_name && (
+                              <p className="text-[11px] text-neutral-500">@{profile.username}</p>
+                            )}
                           </div>
-                        </td>
-
-                        {/* Date */}
-                        <td className="py-4 px-6">
-                          <p className="text-neutral-300 text-xs">
-                            {format(new Date(submission.created_at), 'MMM d, yyyy')}
+                        </div>
+                        <div className="text-right">
+                          <p className="text-neutral-500 text-[10px]">
+                            {format(new Date(submission.created_at), 'MMM d, h:mm a')}
                           </p>
-                          <p className="text-neutral-500 text-[11px]">
-                            {format(new Date(submission.created_at), 'h:mm a')}
-                          </p>
-                        </td>
+                        </div>
+                      </div>
 
-                        {/* Content Preview */}
-                        <td className="py-4 px-6">
+                      {/* Body: Preview Content & Status/Score */}
+                      <div className="flex items-center justify-between gap-4 p-3 bg-neutral-50 dark:bg-white/[0.02] border border-neutral-200 dark:border-white/5 rounded-2xl">
+                        <div className="space-y-1">
+                          <span className="text-[10px] text-neutral-500 font-bold uppercase tracking-wider block">Submission</span>
                           {submission.content_type === 'image' && submission.content_url ? (
                             <div className="flex items-center gap-2">
-                              <div className="h-10 w-10 rounded-lg overflow-hidden border border-white/5 bg-neutral-900 shrink-0">
-                                <img
-                                  src={submission.content_url}
-                                  alt="Submission"
-                                  className="h-full w-full object-cover"
-                                />
-                              </div>
-                              <ImageIcon className="h-3.5 w-3.5 text-neutral-500" />
+                              <button
+                                onClick={() => setPreviewImage(submission.content_url)}
+                                className="h-12 w-12 rounded-xl overflow-hidden border border-neutral-200 dark:border-white/5 bg-neutral-900 shrink-0 cursor-zoom-in hover:opacity-85 transition-opacity"
+                                title="Click to expand"
+                              >
+                                <img src={submission.content_url} alt="Submission" className="h-full w-full object-cover" />
+                              </button>
+                              <span className="text-xs text-neutral-500 font-semibold flex items-center gap-1">
+                                <ImageIcon className="h-3.5 w-3.5" />
+                                Image View
+                              </span>
                             </div>
                           ) : submission.external_link || submission.content_url ? (
                             <a
                               href={submission.external_link || submission.content_url}
                               target="_blank"
                               rel="noopener noreferrer"
-                              className="inline-flex items-center gap-1.5 text-cyan-400 hover:text-cyan-300 text-xs font-medium transition-colors"
+                              className="inline-flex items-center gap-1.5 text-cyan-550 dark:text-cyan-400 hover:text-cyan-450 dark:hover:text-cyan-300 text-xs font-bold transition-colors"
                             >
                               <ExternalLink className="h-3.5 w-3.5" />
                               View Link
                             </a>
-                          ) : submission.caption ? (
-                            <p className="text-neutral-400 text-xs truncate max-w-[150px]">
-                              {submission.caption}
-                            </p>
                           ) : (
-                            <span className="text-neutral-600 text-xs">No content</span>
+                            <p className="text-neutral-600 text-xs italic">No content</p>
                           )}
-                        </td>
+                        </div>
 
-                        {/* Status */}
-                        <td className="py-4 px-6 text-center">
-                          <StatusBadge status={submission.status} />
-                        </td>
-
-                        {/* Score */}
-                        <td className="py-4 px-6 text-center">
-                          {submission.score != null ? (
-                            <span className="text-sm font-bold text-cyan-400">
-                              {submission.score}
-                              <span className="text-neutral-600 font-normal">/100</span>
-                            </span>
-                          ) : (
-                            <span className="text-neutral-600 text-xs">—</span>
-                          )}
-                        </td>
-
-                        {/* Actions */}
-                        <td className="py-4 px-6">
-                          <div className="flex items-center justify-end gap-1">
-                            {submission.status !== 'approved' && (
-                              <Button
-                                onClick={() =>
-                                  statusMutation.mutate({
-                                    id: submission.id,
-                                    status: 'approved',
-                                  })
-                                }
-                                disabled={statusMutation.isPending}
-                                size="icon"
-                                variant="ghost"
-                                className="h-8 w-8 hover:bg-green-500/10 hover:text-green-400 rounded-lg text-neutral-400"
-                                title="Approve"
-                              >
-                                <ThumbsUp className="h-4 w-4" />
-                              </Button>
-                            )}
-                            {submission.status !== 'rejected' && (
-                              <Button
-                                onClick={() =>
-                                  statusMutation.mutate({
-                                    id: submission.id,
-                                    status: 'rejected',
-                                  })
-                                }
-                                disabled={statusMutation.isPending}
-                                size="icon"
-                                variant="ghost"
-                                className="h-8 w-8 hover:bg-red-500/10 hover:text-red-400 rounded-lg text-neutral-400"
-                                title="Reject"
-                              >
-                                <ThumbsDown className="h-4 w-4" />
-                              </Button>
-                            )}
-                            <Button
-                              onClick={() => openScoreDialog(submission)}
-                              size="icon"
-                              variant="ghost"
-                              className="h-8 w-8 hover:bg-purple-500/10 hover:text-purple-400 rounded-lg text-neutral-400"
-                              title="Score"
-                            >
-                              <Star className="h-4 w-4" />
-                            </Button>
+                        <div className="text-right space-y-1.5 shrink-0">
+                          <div>
+                            <StatusBadge status={submission.status} />
                           </div>
-                        </td>
-                      </tr>
-                    )
-                  })}
-                </tbody>
-              </table>
-            </div>
+                          <div>
+                            {submission.score != null ? (
+                              <span className="text-xs font-black text-cyan-500 dark:text-cyan-400 block">
+                                Score: {submission.score}<span className="text-[10px] text-neutral-500 font-normal">/100</span>
+                              </span>
+                            ) : (
+                              <span className="text-[10px] text-neutral-500 dark:text-neutral-600 font-semibold block">Not Scored</span>
+                            )}
+                          </div>
+                        </div>
+                      </div>
+
+                      {/* Actions: Button Row */}
+                      <div className="flex items-center gap-2">
+                        {submission.status !== 'approved' && (
+                          <Button
+                            onClick={() => statusMutation.mutate({ id: submission.id, status: 'approved' })}
+                            disabled={statusMutation.isPending}
+                            variant="outline"
+                            className="flex-1 h-10 border-green-500/20 hover:bg-green-500/10 text-green-500 text-xs font-bold rounded-xl gap-1.5 justify-center"
+                          >
+                            <ThumbsUp className="h-4 w-4" />
+                            Approve
+                          </Button>
+                        )}
+                        {submission.status !== 'rejected' && (
+                          <Button
+                            onClick={() => statusMutation.mutate({ id: submission.id, status: 'rejected' })}
+                            disabled={statusMutation.isPending}
+                            variant="outline"
+                            className="flex-1 h-10 border-red-500/20 hover:bg-red-500/10 text-red-500 text-xs font-bold rounded-xl gap-1.5 justify-center"
+                          >
+                            <ThumbsDown className="h-4 w-4" />
+                            Reject
+                          </Button>
+                        )}
+                        <Button
+                          onClick={() => openScoreDialog(submission)}
+                          variant="outline"
+                          className="flex-1 h-10 border-purple-500/25 hover:bg-purple-500/10 text-purple-500 dark:text-purple-400 text-xs font-bold rounded-xl gap-1.5 justify-center"
+                        >
+                          <Star className="h-4 w-4" />
+                          Score
+                        </Button>
+                      </div>
+                    </div>
+                  )
+                })}
+              </div>
+            </>
           )}
         </CardContent>
       </Card>
@@ -548,6 +681,32 @@ export default function AdminChallengeDetailPage({
                 <Loader2 className="h-4 w-4 animate-spin mr-2" />
               ) : null}
               Save Score
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+ 
+      {/* Lightbox Image Preview Dialog */}
+      <Dialog open={!!previewImage} onOpenChange={(open) => !open && setPreviewImage(null)}>
+        <DialogContent className="!bg-black/95 border border-white/10 p-2 !max-w-2xl flex flex-col items-center justify-center rounded-3xl">
+          <DialogHeader className="w-full flex justify-between items-center px-4 pt-2 border-b border-white/5 pb-2">
+            <DialogTitle className="text-white text-sm font-bold">Submission Image Preview</DialogTitle>
+          </DialogHeader>
+          {previewImage && (
+            <div className="relative max-h-[70vh] w-full flex items-center justify-center p-2 overflow-hidden">
+              <img
+                src={previewImage}
+                alt="Enlarged Submission Preview"
+                className="max-h-[60vh] max-w-full object-contain rounded-2xl border border-white/5"
+              />
+            </div>
+          )}
+          <DialogFooter className="w-full flex justify-end p-2 gap-2 border-t border-white/5 mt-2">
+            <Button
+              onClick={() => setPreviewImage(null)}
+              className="bg-white text-black hover:bg-neutral-200 font-bold rounded-xl text-xs px-4 h-9"
+            >
+              Close
             </Button>
           </DialogFooter>
         </DialogContent>

@@ -1,6 +1,7 @@
 'use server'
 
 import { createClient } from '@/lib/supabase/server'
+import { createAdminClient } from '@/lib/supabase/admin'
 import { getCurrentProfile } from './auth'
 import { revalidatePath } from 'next/cache'
 
@@ -24,7 +25,7 @@ export async function createEquipment(input: {
 }) {
   try {
     await assertAdminOrLeader()
-    const supabase = await createClient()
+    const supabase = await createAdminClient()
 
     const { data, error } = await supabase
       .from('equipment')
@@ -68,7 +69,7 @@ export async function updateEquipment(id: string, input: {
 }) {
   try {
     await assertAdminOrLeader()
-    const supabase = await createClient()
+    const supabase = await createAdminClient()
 
     const { data, error } = await supabase
       .from('equipment')
@@ -93,7 +94,7 @@ export async function updateEquipment(id: string, input: {
 export async function deleteEquipment(id: string) {
   try {
     await assertAdminOrLeader()
-    const supabase = await createClient()
+    const supabase = await createAdminClient()
 
     const { error } = await supabase
       .from('equipment')

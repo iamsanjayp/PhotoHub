@@ -9,7 +9,7 @@ export default async function PublicLayout({
   const profile = await getCurrentProfile()
 
   return (
-    <div className="relative min-h-screen bg-[#0A0A0A] text-foreground flex flex-col">
+    <div className="relative min-h-screen bg-background text-foreground flex flex-col">
       {/* Public Navbar */}
       <PublicNavbar profile={profile} />
       

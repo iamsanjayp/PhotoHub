@@ -27,6 +27,8 @@ import {
 import Sidebar from '@/components/layout/sidebar'
 import AdminSidebar from '@/components/layout/admin-sidebar'
 
+import { ThemeToggle } from '@/components/theme-toggle'
+
 export default function Header({ profile }: { profile: Profile }) {
   const [unreadCount, setUnreadCount] = useState(0)
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false)
@@ -83,17 +85,17 @@ export default function Header({ profile }: { profile: Profile }) {
   }
 
   return (
-    <header className="sticky top-0 z-30 h-16 border-b border-white/5 bg-black/40 backdrop-blur-xl flex items-center justify-between px-4 md:px-6">
+    <header className="sticky top-0 z-30 h-16 border-b border-neutral-200 dark:border-white/5 bg-background/80 backdrop-blur-xl flex items-center justify-between px-4 md:px-6">
       {/* Mobile Title & Hamburger */}
       <div className="flex items-center gap-2 md:hidden">
         <Sheet open={isMobileMenuOpen} onOpenChange={setIsMobileMenuOpen}>
           <SheetTrigger render={
-            <Button variant="ghost" size="icon" className="h-10 w-10 text-neutral-400 hover:text-white hover:bg-white/5 rounded-xl">
+            <Button variant="ghost" size="icon" className="h-10 w-10 text-neutral-400 hover:text-white dark:hover:text-white hover:bg-neutral-100 dark:hover:bg-white/5 rounded-xl">
               <Menu className="h-5 w-5" />
               <span className="sr-only">Open navigation menu</span>
             </Button>
           } />
-          <SheetContent side="left" className="w-[280px] p-0 bg-[#0B0B0B] border-r border-white/5 h-full" showCloseButton={false}>
+          <SheetContent side="left" className="w-[280px] p-0 bg-sidebar border-r border-neutral-200 dark:border-white/5 h-full" showCloseButton={false}>
             {isAdminWorkspace ? (
               <AdminSidebar profile={profile} isMobile={true} />
             ) : (
@@ -102,13 +104,8 @@ export default function Header({ profile }: { profile: Profile }) {
           </SheetContent>
         </Sheet>
 
-        <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-gradient-to-tr from-cyan-500 to-teal-500">
-          <svg className="h-5 w-5 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-            <path strokeLinecap="round" strokeLinejoin="round" d="M3 9a2 2 0 012-2h.93a2 2 0 001.664-.89l.812-1.22A2 2 0 0110.07 4h3.86a2 2 0 011.664.89l.812 1.22A2 2 0 0018.07 7H19a2 2 0 012 2v9a2 2 0 01-2 2H5a2 2 0 01-2-2V9z" />
-            <path strokeLinecap="round" strokeLinejoin="round" d="M15 13a3 3 0 11-6 0 3 3 0 016 0z" />
-          </svg>
-        </div>
-        <span className="font-extrabold text-lg tracking-tight bg-gradient-to-r from-white to-neutral-400 bg-clip-text text-transparent">
+        <img src="/logo.png" alt="PhotoHub Logo" className="h-9 w-9 rounded-xl object-cover shadow-md shadow-cyan-500/10" />
+        <span className="font-extrabold text-lg tracking-tight bg-gradient-to-r from-neutral-800 to-neutral-500 dark:from-white dark:to-neutral-400 bg-clip-text text-transparent">
           PhotoHub
         </span>
       </div>
@@ -119,15 +116,18 @@ export default function Header({ profile }: { profile: Profile }) {
         <Input 
           type="search" 
           placeholder="Search events, posts, members..." 
-          className="pl-9 h-10 w-[300px] lg:w-[400px] border-white/5 bg-white/[0.03] text-sm text-neutral-200 placeholder-neutral-500 focus-visible:ring-cyan-500/50 rounded-xl"
+          className="pl-9 h-10 w-[300px] lg:w-[400px] border-neutral-200 dark:border-white/5 bg-neutral-100 dark:bg-white/[0.03] text-sm text-neutral-800 dark:text-neutral-200 placeholder-neutral-500 focus-visible:ring-cyan-500/50 rounded-xl"
         />
       </div>
 
       {/* Actions */}
       <div className="flex items-center gap-4">
+        {/* Theme Toggle */}
+        <ThemeToggle />
+
         {/* Notifications Bell */}
         <Link href="/notifications" className="relative">
-          <Button variant="ghost" size="icon" className="h-10 w-10 text-neutral-400 hover:text-white hover:bg-white/5 rounded-xl">
+          <Button variant="ghost" size="icon" className="h-10 w-10 text-neutral-400 hover:text-white dark:hover:text-white hover:bg-neutral-100 dark:hover:bg-white/5 rounded-xl">
             <Bell className="h-5 w-5" />
             {unreadCount > 0 && (
               <span className="absolute top-1.5 right-1.5 flex h-4 min-w-4 items-center justify-center rounded-full bg-cyan-500 px-1 text-[9px] font-bold text-black ring-2 ring-black">

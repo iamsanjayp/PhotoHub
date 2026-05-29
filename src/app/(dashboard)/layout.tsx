@@ -4,6 +4,8 @@ import Sidebar from '@/components/layout/sidebar'
 import Header from '@/components/layout/header'
 import MobileNav from '@/components/layout/mobile-nav'
 
+export const dynamic = 'force-dynamic'
+
 export default async function DashboardLayout({
   children,
 }: {
@@ -20,7 +22,7 @@ export default async function DashboardLayout({
   }
 
   return (
-    <div className="relative min-h-screen bg-[#0A0A0A] text-foreground flex flex-col md:flex-row">
+    <div className="relative min-h-screen bg-background text-foreground flex flex-col md:flex-row">
       {/* Sidebar for Desktop */}
       <Sidebar profile={profile} />
 

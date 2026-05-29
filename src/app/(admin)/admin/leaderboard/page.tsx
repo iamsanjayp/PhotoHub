@@ -112,7 +112,7 @@ export default function AdminLeaderboardPage() {
   return (
     <div className="space-y-8 pb-12">
       {/* Header */}
-      <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
+      <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
         <div className="space-y-1">
           <h1 className="text-3xl font-extrabold tracking-tight text-white flex items-center gap-2">
             <Trophy className="h-7 w-7 text-cyan-400" />
@@ -123,32 +123,33 @@ export default function AdminLeaderboardPage() {
           </p>
         </div>
 
-        <div className="flex items-center gap-3">
+        <div className="flex flex-col md:flex-row items-stretch md:items-center gap-3 w-full md:w-auto">
           {/* Refresh Cache Button */}
           <Button
             variant="outline"
             size="sm"
             onClick={() => refreshMutation.mutate()}
             disabled={refreshMutation.isPending}
-            className="h-10 border-white/10 bg-white/[0.02] text-neutral-300 hover:bg-white/5 hover:text-white rounded-xl text-xs font-bold gap-2"
+            className="h-10 border-white/10 bg-white/[0.02] text-neutral-300 hover:bg-white/5 hover:text-white rounded-xl text-xs font-bold gap-2 justify-center"
           >
             <RefreshCw className={cn("h-4 w-4", refreshMutation.isPending && "animate-spin")} />
             Refresh Cache
           </Button>
-
+ 
           {/* Period Filters */}
           <Tabs
             value={period}
             onValueChange={(val) => setPeriod(val as any)}
+            className="w-full md:w-auto"
           >
-            <TabsList className="bg-white/[0.02] border border-white/5 group-data-horizontal/tabs:h-10 h-10 p-1 rounded-xl">
-              <TabsTrigger value="total" className="data-[state=active]:bg-cyan-500 data-[state=active]:text-black text-xs font-bold rounded-lg px-5 h-full">
+            <TabsList className="bg-white/[0.02] border border-white/5 group-data-horizontal/tabs:h-10 h-10 p-1 rounded-xl w-full md:w-auto flex justify-between md:justify-start">
+              <TabsTrigger value="total" className="flex-1 md:flex-initial data-[state=active]:bg-cyan-500 data-[state=active]:text-black text-[11px] md:text-xs font-bold rounded-lg px-3 md:px-5 h-full text-center">
                 All Time
               </TabsTrigger>
-              <TabsTrigger value="semester" className="data-[state=active]:bg-cyan-500 data-[state=active]:text-black text-xs font-bold rounded-lg px-5 h-full">
+              <TabsTrigger value="semester" className="flex-1 md:flex-initial data-[state=active]:bg-cyan-500 data-[state=active]:text-black text-[11px] md:text-xs font-bold rounded-lg px-3 md:px-5 h-full text-center">
                 Semester
               </TabsTrigger>
-              <TabsTrigger value="monthly" className="data-[state=active]:bg-cyan-500 data-[state=active]:text-black text-xs font-bold rounded-lg px-5 h-full">
+              <TabsTrigger value="monthly" className="flex-1 md:flex-initial data-[state=active]:bg-cyan-500 data-[state=active]:text-black text-[11px] md:text-xs font-bold rounded-lg px-3 md:px-5 h-full text-center">
                 Month
               </TabsTrigger>
             </TabsList>
@@ -204,7 +205,7 @@ export default function AdminLeaderboardPage() {
                 No leaderboard data available for this period.
               </div>
             ) : (
-              <div className="max-h-[600px] overflow-y-auto">
+              <div className="max-h-[600px] overflow-y-auto overflow-x-auto w-full">
                 <Table>
                   <TableHeader className="border-b border-white/5 sticky top-0 bg-neutral-950/90 backdrop-blur-sm z-10">
                     <TableRow className="border-b border-white/5 hover:bg-transparent">

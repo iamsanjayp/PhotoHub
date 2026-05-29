@@ -8,7 +8,10 @@ import { revalidatePath } from 'next/cache'
 
 export async function signInWithGoogle() {
   const supabase = await createClient()
-  const origin = (await headers()).get('origin')
+  const headersList = await headers()
+  const host = headersList.get('host')
+  const proto = headersList.get('x-forwarded-proto') || (host?.includes('localhost') ? 'http' : 'https')
+  const origin = `${proto}://${host}`
 
   const { data, error } = await supabase.auth.signInWithOAuth({
     provider: 'google',

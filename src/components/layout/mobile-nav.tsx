@@ -143,7 +143,7 @@ export default function MobileNav({ profile }: { profile: Profile }) {
   }
 
   return (
-    <nav className="md:hidden fixed bottom-0 left-0 right-0 pb-[env(safe-area-inset-bottom)] h-[calc(4rem+env(safe-area-inset-bottom))] border-t border-white/5 bg-[#0B0B0B]/80 backdrop-blur-lg flex items-center justify-around px-2 z-40">
+    <nav className="md:hidden fixed bottom-0 left-0 right-0 pb-[env(safe-area-inset-bottom)] h-[calc(4rem+env(safe-area-inset-bottom))] border-t border-neutral-200 dark:border-white/5 bg-sidebar/85 backdrop-blur-lg flex items-center justify-around px-2 z-40">
       {primaryItems.map((item) => {
         const isActive = pathname === item.href || (item.href !== '/dashboard' && item.href !== '/admin' && pathname.startsWith(`${item.href}/`))
         const Icon = item.icon
@@ -154,7 +154,7 @@ export default function MobileNav({ profile }: { profile: Profile }) {
             href={item.href}
             className={cn(
               'flex flex-col items-center justify-center gap-1 w-14 h-12 rounded-xl transition-all duration-200',
-              isActive ? 'text-cyan-400 font-semibold scale-105' : 'text-neutral-400'
+              isActive ? 'text-cyan-400 font-semibold scale-105' : 'text-neutral-500 dark:text-neutral-400'
             )}
           >
             <Icon className="h-5 w-5" />
@@ -166,14 +166,14 @@ export default function MobileNav({ profile }: { profile: Profile }) {
       {/* "More" Trigger Sheet */}
       <Sheet open={isOpen} onOpenChange={setIsOpen}>
         <SheetTrigger render={
-          <button className="flex flex-col items-center justify-center gap-1 w-14 h-12 rounded-xl text-neutral-400">
+          <button className="flex flex-col items-center justify-center gap-1 w-14 h-12 rounded-xl text-neutral-550 dark:text-neutral-450">
             <Menu className="h-5 w-5" />
             <span className="text-[10px] tracking-tight">More</span>
           </button>
         } />
-        <SheetContent side="bottom" className="bg-[#0D0D0D] border-t border-white/5 text-neutral-200 rounded-t-3xl max-h-[85vh] overflow-y-auto px-6 pb-8">
-          <SheetHeader className="pb-4 border-b border-white/5 text-left">
-            <SheetTitle className="text-lg font-extrabold text-white">
+        <SheetContent side="bottom" className="bg-sidebar border-t border-neutral-200 dark:border-white/5 text-foreground rounded-t-3xl max-h-[85vh] overflow-y-auto px-6 pb-8">
+          <SheetHeader className="pb-4 border-b border-neutral-200 dark:border-white/5 text-left">
+            <SheetTitle className="text-lg font-extrabold text-neutral-800 dark:text-white">
               {isAdminWorkspace ? 'Admin Navigation' : 'Menu Navigation'}
             </SheetTitle>
           </SheetHeader>
@@ -192,8 +192,8 @@ export default function MobileNav({ profile }: { profile: Profile }) {
                       isActive
                         ? item.highlight
                           ? 'bg-cyan-500/10 border-cyan-500/30 text-cyan-400'
-                          : 'bg-white/5 border-white/10 text-white'
-                        : 'bg-white/[0.01] border-white/5 text-neutral-400 hover:text-white hover:bg-white/[0.03]'
+                          : 'bg-neutral-100 dark:bg-white/5 border-neutral-200 dark:border-white/10 text-neutral-850 dark:text-white'
+                        : 'bg-neutral-50 dark:bg-white/[0.01] border-neutral-200 dark:border-white/5 text-neutral-500 hover:text-neutral-800 dark:hover:text-white dark:hover:bg-white/[0.03]'
                     )}
                   />
                 }>
@@ -204,17 +204,17 @@ export default function MobileNav({ profile }: { profile: Profile }) {
             })}
           </div>
 
-          <div className="flex flex-col gap-4 border-t border-white/5 pt-6">
+          <div className="flex flex-col gap-4 border-t border-neutral-200 dark:border-white/5 pt-6">
             <div className="flex items-center gap-3 px-2">
-              <div className="h-10 w-10 rounded-2xl bg-neutral-800 flex items-center justify-center shrink-0 border border-white/5 overflow-hidden">
+              <div className="h-10 w-10 rounded-2xl bg-neutral-200 dark:bg-neutral-800 flex items-center justify-center shrink-0 border border-neutral-200 dark:border-white/5 overflow-hidden">
                 {profile.avatar_url && profile.avatar_url.trim() !== '' ? (
                   <img src={profile.avatar_url} alt="avatar" className="h-full w-full object-cover" />
                 ) : (
-                  <User className="h-5 w-5 text-neutral-500" />
+                  <User className="h-5 w-5 text-neutral-550" />
                 )}
               </div>
               <div className="flex-1 min-w-0">
-                <p className="text-sm font-bold text-white truncate">{profile.full_name || 'Member'}</p>
+                <p className="text-sm font-bold text-neutral-800 dark:text-white truncate">{profile.full_name || 'Member'}</p>
                 <p className="text-xs text-neutral-500 truncate capitalize">{profile.role.replace('_', ' ')}</p>
               </div>
             </div>
