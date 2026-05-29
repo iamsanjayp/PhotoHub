@@ -118,15 +118,73 @@ export async function getUserSubmissions(userId?: string) {
 
     const targetUserId = userId || profile.id
     const supabase = await createClient()
-    const { data, error } = await supabase
+    
+    // Fetch submissions first without relation joins
+    const { data: submissions, error } = await supabase
       .from('submissions')
-      .select('*, events(title), challenges(title)')
+      .select('*')
       .eq('user_id', targetUserId)
       .order('created_at', { ascending: false })
 
     if (error) throw error
+    if (!submissions || submissions.length === 0) {
+      return { data: [] }
+    }
 
-    return { data }
+    // Group IDs by submittable type to fetch details in batch
+    const eventIds = submissions
+      .filter(s => s.submittable_type === 'event')
+      .map(s => s.submittable_id)
+    
+    const challengeIds = submissions
+      .filter(s => s.submittable_type === 'challenge')
+      .map(s => s.submittable_id)
+
+    // Fetch event titles
+    const eventsMap = new Map()
+    if (eventIds.length > 0) {
+      const { data: events, error: eventsErr } = await supabase
+        .from('events')
+        .select('id, title')
+        .in('id', eventIds)
+      
+      if (!eventsErr && events) {
+        events.forEach(e => eventsMap.set(e.id, e.title))
+      }
+    }
+
+    // Fetch challenge titles
+    const challengesMap = new Map()
+    if (challengeIds.length > 0) {
+      const { data: challenges, error: challengesErr } = await supabase
+        .from('challenges')
+        .select('id, title')
+        .in('id', challengeIds)
+      
+      if (!challengesErr && challenges) {
+        challenges.forEach(c => challengesMap.set(c.id, c.title))
+      }
+    }
+
+    // Hydrate the events/challenges structures expected by the frontend
+    const hydratedData = submissions.map(sub => {
+      let events = null
+      let challenges = null
+
+      if (sub.submittable_type === 'event') {
+        events = { title: eventsMap.get(sub.submittable_id) || 'Unknown Event' }
+      } else if (sub.submittable_type === 'challenge') {
+        challenges = { title: challengesMap.get(sub.submittable_id) || 'Unknown Challenge' }
+      }
+
+      return {
+        ...sub,
+        events,
+        challenges
+      }
+    })
+
+    return { data: hydratedData }
   } catch (error: any) {
     console.error('Error in getUserSubmissions:', error)
     return { error: error.message || 'Failed to fetch user submissions' }
