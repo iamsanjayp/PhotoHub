@@ -267,14 +267,19 @@ export default function AdminEventDashboard({
 
         {/* Tab 1: Overview */}
         <TabsContent value="overview" className="mt-6 space-y-6">
-          {event.banner_url && (
-            <div className="relative aspect-[21/9] w-full bg-neutral-900 border border-white/5 rounded-2xl overflow-hidden shadow-lg">
-              <img src={event.banner_url} alt="" className="h-full w-full object-cover" />
-            </div>
-          )}
-
           <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-            <Card className="border-white/5 bg-black/40 backdrop-blur-xl rounded-2xl md:col-span-2">
+            {event.banner_url && (
+              <Card className="border-white/5 bg-black/40 backdrop-blur-xl rounded-2xl overflow-hidden shadow-lg md:col-span-1">
+                <div className="relative aspect-[4/5] w-full bg-neutral-950 flex items-center justify-center">
+                  <img src={event.banner_url} alt={event.title} className="h-full w-full object-contain" />
+                </div>
+              </Card>
+            )}
+
+            <Card className={cn(
+              "border-white/5 bg-black/40 backdrop-blur-xl rounded-2xl",
+              event.banner_url ? "md:col-span-1" : "md:col-span-2"
+            )}>
               <CardHeader>
                 <CardTitle className="text-lg font-bold text-white">Event Details</CardTitle>
               </CardHeader>

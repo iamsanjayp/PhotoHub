@@ -65,54 +65,56 @@ export default async function EventDetailPage({ params }: PageProps) {
         Back to Events
       </Link>
 
-      {/* Hero Banner Header */}
-      <div className="relative h-[250px] md:h-[350px] w-full rounded-3xl overflow-hidden border border-white/5 shadow-2xl">
-        {event.banner_url ? (
-          <img src={event.banner_url} alt={event.title} className="h-full w-full object-cover" />
-        ) : (
-          <div className="absolute inset-0 bg-gradient-to-tr from-cyan-950/20 via-neutral-900 to-black" />
-        )}
-        <div className="absolute inset-0 bg-gradient-to-t from-black via-black/40 to-transparent" />
-        
-        {/* Floating Category & Status */}
-        <div className="absolute top-4 left-4 flex gap-2">
-          <Badge className={cn("border-none capitalize font-bold text-xs px-3 py-1", typeStyles[event.event_type] || typeStyles.other)}>
+      {/* Event Info Header */}
+      <div className="space-y-3">
+        <div className="flex items-center gap-2 flex-wrap">
+          <Badge className={cn("border-none capitalize font-bold text-[10px] px-2.5 py-0.5", typeStyles[event.event_type] || typeStyles.other)}>
             {event.event_type}
           </Badge>
           <Badge className={cn(
-            "border-none font-bold text-xs px-3 py-1 capitalize",
+            "border-none font-bold text-[10px] px-2.5 py-0.5 capitalize",
             isPast ? 'bg-neutral-800 text-neutral-400' : 'bg-cyan-500 text-black'
           )}>
             {isPast ? 'Past Event' : 'Upcoming'}
           </Badge>
         </div>
-
-        {/* Title Details Overlay */}
-        <div className="absolute bottom-6 left-6 right-6 space-y-2">
-          <h1 className="text-2xl md:text-4xl font-extrabold text-white tracking-tight">
-            {event.title}
-          </h1>
-          <div className="flex flex-wrap items-center gap-4 text-xs md:text-sm text-neutral-300">
-            <span className="flex items-center gap-1">
-              <Clock className="h-4 w-4 text-neutral-400" />
-              {format(new Date(event.start_date), 'dd MMM yyyy, hh:mm a')}
+        <h1 className="text-2xl md:text-4xl font-extrabold text-white tracking-tight leading-tight">
+          {event.title}
+        </h1>
+        <div className="flex flex-wrap items-center gap-x-6 gap-y-2 text-xs md:text-sm text-neutral-450 dark:text-neutral-400">
+          <span className="flex items-center gap-1.5">
+            <Clock className="h-4 w-4 text-cyan-400" />
+            {format(new Date(event.start_date), 'dd MMM yyyy, hh:mm a')}
+          </span>
+          {event.venue && (
+            <span className="flex items-center gap-1.5">
+              <MapPin className="h-4 w-4 text-cyan-400" />
+              {event.venue}
             </span>
-            {event.venue && (
-              <span className="flex items-center gap-1">
-                <MapPin className="h-4 w-4 text-neutral-400" />
-                {event.venue}
-              </span>
-            )}
-          </div>
+          )}
         </div>
       </div>
 
       {/* Main Shell */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
         
-        {/* Left Side: Content Tabs (Overview / Submissions) */}
-        <div className="lg:col-span-2 space-y-6">
-          <Tabs defaultValue="overview" className="w-full">
+        {/* Left Side: Poster & Tabs Content */}
+        <div className="lg:col-span-2">
+          <div className="grid grid-cols-1 md:grid-cols-5 gap-6">
+            {/* Event Poster (4:5 Aspect Ratio) */}
+            {event.banner_url && (
+              <div className="md:col-span-2">
+                <Card className="border-neutral-200 dark:border-white/5 bg-black/40 backdrop-blur-xl rounded-3xl overflow-hidden shadow-2xl h-fit">
+                  <div className="relative aspect-[4/5] w-full bg-neutral-950 flex items-center justify-center">
+                    <img src={event.banner_url} alt={event.title} className="h-full w-full object-contain" />
+                  </div>
+                </Card>
+              </div>
+            )}
+            
+            {/* Content Tabs (Overview / Submissions) */}
+            <div className={cn("space-y-6", event.banner_url ? "md:col-span-3" : "md:col-span-5")}>
+              <Tabs defaultValue="overview" className="w-full">
             <TabsList className="bg-white/[0.02] border border-white/5 h-11 p-1 rounded-xl w-full sm:w-auto">
               <TabsTrigger value="overview" className="data-[state=active]:bg-cyan-500 data-[state=active]:text-black text-xs font-bold rounded-lg px-6 h-full flex-1 sm:flex-initial">
                 Overview
@@ -180,10 +182,12 @@ export default async function EventDetailPage({ params }: PageProps) {
                 )}
               </TabsContent>
             )}
-          </Tabs>
+            </Tabs>
+          </div>
         </div>
+      </div>
 
-        {/* Right Side: Registration Widget */}
+      {/* Right Side: Registration Widget */}
         <div className="space-y-6">
           <Card className="border-white/5 bg-black/40 backdrop-blur-xl rounded-2xl">
             <CardHeader className="pb-4">

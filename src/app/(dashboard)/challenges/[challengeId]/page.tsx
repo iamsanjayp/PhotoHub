@@ -53,80 +53,84 @@ export default async function ChallengeDetailPage({ params }: PageProps) {
         Back to Challenges
       </Link>
 
-      {/* Hero Header */}
-      <div className="relative h-[220px] md:h-[300px] w-full rounded-3xl overflow-hidden border border-white/5 shadow-2xl">
-        {challenge.banner_url ? (
-          <img src={challenge.banner_url} alt={challenge.title} className="h-full w-full object-cover" />
-        ) : (
-          <div className="absolute inset-0 bg-gradient-to-tr from-cyan-950/15 via-neutral-900 to-black" />
-        )}
-        <div className="absolute inset-0 bg-gradient-to-t from-black via-black/40 to-transparent" />
-        
-        {/* Floating details */}
-        <div className="absolute top-4 left-4 flex gap-2">
+      {/* Title & Theme Info Header (No Banner!) */}
+      <div className="space-y-3">
+        <div className="flex items-center gap-2 flex-wrap">
           {challenge.theme && (
-            <Badge className="border-none bg-cyan-500/10 text-cyan-400 font-bold text-xs px-3 py-1">
+            <Badge className="border-none bg-cyan-500/10 text-cyan-400 font-bold text-[10px] px-2.5 py-0.5">
               Theme: {challenge.theme}
             </Badge>
           )}
           <Badge className={cn(
-            "border-none font-bold text-xs px-3 py-1",
+            "border-none font-bold text-[10px] px-2.5 py-0.5 capitalize",
             isExpired ? 'bg-neutral-800 text-neutral-400' : 'bg-cyan-500 text-black'
           )}>
             {isExpired ? 'Completed' : 'Active'}
           </Badge>
         </div>
-
-        {/* Title Details Overlay */}
-        <div className="absolute bottom-6 left-6 right-6 space-y-2">
-          <h1 className="text-2xl md:text-4xl font-extrabold text-white tracking-tight">
-            {challenge.title}
-          </h1>
-          <div className="flex items-center gap-2 text-xs md:text-sm text-neutral-300">
-            <Clock className="h-4 w-4 text-neutral-400" />
-            <span>Ends: {format(new Date(challenge.end_date), 'dd MMMM yyyy')}</span>
-          </div>
+        <h1 className="text-2xl md:text-4xl font-extrabold text-white tracking-tight leading-tight">
+          {challenge.title}
+        </h1>
+        <div className="flex items-center gap-2 text-xs md:text-sm text-neutral-450 dark:text-neutral-400">
+          <Clock className="h-4 w-4 text-cyan-400" />
+          <span>Ends: {format(new Date(challenge.end_date), 'dd MMMM yyyy')}</span>
         </div>
       </div>
 
       {/* Shell Grid */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
         
-        {/* Left Side: Overview & Guidelines */}
-        <div className="lg:col-span-2 space-y-6">
-          <Card className="border-white/5 bg-black/40 backdrop-blur-xl rounded-2xl">
-            <CardHeader>
-              <CardTitle className="text-lg font-bold text-white">Theme Details & Brief</CardTitle>
-            </CardHeader>
-            <CardContent className="text-sm text-neutral-300 leading-relaxed whitespace-pre-line">
-              {challenge.description || 'No detailed instructions provided.'}
-            </CardContent>
-          </Card>
-
-          {challenge.external_link && (
-            <div className="flex items-start gap-3 rounded-2xl border border-cyan-500/10 bg-cyan-500/5 p-4 text-sm text-cyan-400/80">
-              <ExternalLink className="h-5 w-5 shrink-0 mt-0.5" />
-              <div>
-                <span className="font-bold text-white block mb-0.5">Attachment / External Link</span>
-                Access challenge attachments, guidelines, or external portals:{" "}
-                <a href={challenge.external_link} target={challenge.external_link.startsWith('http') ? '_blank' : undefined} rel="noopener noreferrer" className="font-semibold text-cyan-400 hover:underline break-all">
-                  {challenge.external_link}
-                </a>
+        {/* Left Side: Poster & Content */}
+        <div className="lg:col-span-2">
+          <div className="grid grid-cols-1 md:grid-cols-5 gap-6">
+            {/* Challenge Poster (4:5 Aspect Ratio) */}
+            {challenge.banner_url && (
+              <div className="md:col-span-2">
+                <Card className="border-neutral-200 dark:border-white/5 bg-black/40 backdrop-blur-xl rounded-3xl overflow-hidden shadow-2xl h-fit">
+                  <div className="relative aspect-[4/5] w-full bg-neutral-950 flex items-center justify-center">
+                    <img src={challenge.banner_url} alt={challenge.title} className="h-full w-full object-contain" />
+                  </div>
+                </Card>
               </div>
-            </div>
-          )}
+            )}
+            
+            {/* Overview & Guidelines details */}
+            <div className={cn("space-y-6", challenge.banner_url ? "md:col-span-3" : "md:col-span-5")}>
+              <Card className="border-white/5 bg-black/40 backdrop-blur-xl rounded-2xl">
+                <CardHeader>
+                  <CardTitle className="text-lg font-bold text-white">Theme Details & Brief</CardTitle>
+                </CardHeader>
+                <CardContent className="text-sm text-neutral-300 leading-relaxed whitespace-pre-line">
+                  {challenge.description || 'No detailed instructions provided.'}
+                </CardContent>
+              </Card>
 
-          {/* Submission Guidelines info card */}
-          <Card className="border-white/5 bg-black/20 rounded-2xl">
-            <CardHeader className="pb-2">
-              <CardTitle className="text-xs font-bold text-neutral-400 uppercase tracking-wider">Evaluation Guidelines</CardTitle>
-            </CardHeader>
-            <CardContent className="text-xs text-neutral-500 space-y-2 leading-relaxed">
-              <p>• Only original work captured by the member is permitted. Plagiarism leads to disqualification.</p>
-              <p>• Make sure to submit before the deadline. Late entries are not accepted by the engine.</p>
-              <p>• Evaluation is performed by club administrators. Scores (out of 100) and winners are announced on the club feed.</p>
-            </CardContent>
-          </Card>
+              {challenge.external_link && (
+                <div className="flex items-start gap-3 rounded-2xl border border-cyan-500/10 bg-cyan-500/5 p-4 text-sm text-cyan-400/80">
+                  <ExternalLink className="h-5 w-5 shrink-0 mt-0.5" />
+                  <div>
+                    <span className="font-bold text-white block mb-0.5">Attachment / External Link</span>
+                    Access challenge attachments, guidelines, or external portals:{" "}
+                    <a href={challenge.external_link} target={challenge.external_link.startsWith('http') ? '_blank' : undefined} rel="noopener noreferrer" className="font-semibold text-cyan-400 hover:underline break-all">
+                      {challenge.external_link}
+                    </a>
+                  </div>
+                </div>
+              )}
+
+              {/* Submission Guidelines info card */}
+              <Card className="border-white/5 bg-black/20 rounded-2xl">
+                <CardHeader className="pb-2">
+                  <CardTitle className="text-xs font-bold text-neutral-400 uppercase tracking-wider">Evaluation Guidelines</CardTitle>
+                </CardHeader>
+                <CardContent className="text-xs text-neutral-500 space-y-2 leading-relaxed">
+                  <p>• Only original work captured by the member is permitted. Plagiarism leads to disqualification.</p>
+                  <p>• Make sure to submit before the deadline. Late entries are not accepted by the engine.</p>
+                  <p>• Evaluation is performed by club administrators. Scores (out of 100) and winners are announced on the club feed.</p>
+                </CardContent>
+              </Card>
+            </div>
+          </div>
         </div>
 
         {/* Right Side: Submission Widget */}

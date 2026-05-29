@@ -184,62 +184,67 @@ export default function AdminChallengeDetailPage({
 
         {/* Challenge Overview Card */}
         <Card className="border-white/5 bg-black/40 backdrop-blur-xl rounded-2xl overflow-hidden shadow-xl">
-          {challenge.banner_url && (
-            <div className="relative h-48 w-full overflow-hidden">
-              <img
-                src={challenge.banner_url}
-                alt={challenge.title}
-                className="h-full w-full object-cover"
-              />
-              <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-black/30 to-transparent" />
-            </div>
-          )}
-          <CardContent className={cn('p-6', challenge.banner_url && '-mt-16 relative z-10')}>
-            <div className="flex flex-col sm:flex-row sm:items-start justify-between gap-4">
-              <div className="space-y-2 min-w-0">
-                <div className="flex items-center gap-3 flex-wrap">
-                  <h1 className="text-2xl sm:text-3xl font-extrabold tracking-tight text-white">
-                    {challenge.title}
-                  </h1>
-                  <span
-                    className={cn(
-                      'text-[10px] font-bold uppercase py-1 px-2.5 rounded-full',
-                      isActive
-                        ? 'bg-green-500/10 text-green-400 border border-green-500/20'
-                        : 'bg-neutral-500/10 text-neutral-400 border border-neutral-500/20'
-                    )}
-                  >
-                    {isActive ? 'Active' : 'Closed'}
-                  </span>
+          <CardContent className="p-6">
+            <div className="flex flex-col md:flex-row gap-6 items-start">
+              {/* Challenge Poster (4:5 Ratio) */}
+              {challenge.banner_url && (
+                <div className="relative aspect-[4/5] h-56 md:h-64 border border-neutral-250 dark:border-white/5 bg-neutral-950 rounded-2xl overflow-hidden shadow-lg shrink-0 flex items-center justify-center">
+                  <img
+                    src={challenge.banner_url}
+                    alt={challenge.title}
+                    className="h-full w-full object-contain"
+                  />
                 </div>
-                {challenge.theme && (
-                  <p className="text-xs text-cyan-400 font-bold uppercase tracking-wider">
-                    Theme: {challenge.theme}
-                  </p>
-                )}
-                {challenge.description && (
-                  <p className="text-sm text-neutral-400 max-w-2xl leading-relaxed">
-                    {challenge.description}
-                  </p>
-                )}
-              </div>
-              <div className="flex flex-col items-start sm:items-end gap-2 shrink-0 text-sm">
-                <div className="flex items-center gap-2 text-neutral-300">
-                  <Calendar className="h-4 w-4 text-neutral-500" />
-                  <span>
-                    {format(new Date(challenge.start_date), 'MMM d')} –{' '}
-                    {format(new Date(challenge.end_date), 'MMM d, yyyy')}
-                  </span>
+              )}
+
+              {/* Challenge Details Info */}
+              <div className="flex-1 flex flex-col sm:flex-row sm:items-start justify-between gap-6 w-full">
+                <div className="space-y-2 min-w-0 flex-1">
+                  <div className="flex items-center gap-3 flex-wrap">
+                    <h1 className="text-2xl sm:text-3xl font-extrabold tracking-tight text-white leading-tight">
+                      {challenge.title}
+                    </h1>
+                    <span
+                      className={cn(
+                        'text-[10px] font-bold uppercase py-1 px-2.5 rounded-full',
+                        isActive
+                          ? 'bg-green-500/10 text-green-400 border border-green-500/20'
+                          : 'bg-neutral-500/10 text-neutral-400 border border-neutral-500/20'
+                      )}
+                    >
+                      {isActive ? 'Active' : 'Closed'}
+                    </span>
+                  </div>
+                  {challenge.theme && (
+                    <p className="text-xs text-cyan-400 font-bold uppercase tracking-wider">
+                      Theme: {challenge.theme}
+                    </p>
+                  )}
+                  {challenge.description && (
+                    <p className="text-sm text-neutral-400 max-w-2xl leading-relaxed whitespace-pre-wrap">
+                      {challenge.description}
+                    </p>
+                  )}
                 </div>
-                <div className="flex items-center gap-2 text-cyan-400 font-bold">
-                  <Award className="h-4 w-4" />
-                  {challenge.points} points
-                </div>
-                <div className="flex items-center gap-2 text-neutral-400 text-xs">
-                  <FileText className="h-3.5 w-3.5" />
-                  {challenge.submission_mode === 'drive_link'
-                    ? 'Google Drive Link'
-                    : `${challenge.submission_mode} upload`}
+
+                <div className="flex flex-col items-start sm:items-end gap-2 shrink-0 text-sm w-full sm:w-auto">
+                  <div className="flex items-center gap-2 text-neutral-300">
+                    <Calendar className="h-4 w-4 text-neutral-500" />
+                    <span>
+                      {format(new Date(challenge.start_date), 'MMM d')} –{' '}
+                      {format(new Date(challenge.end_date), 'MMM d, yyyy')}
+                    </span>
+                  </div>
+                  <div className="flex items-center gap-2 text-cyan-400 font-bold">
+                    <Award className="h-4 w-4" />
+                    {challenge.points} points
+                  </div>
+                  <div className="flex items-center gap-2 text-neutral-400 text-xs">
+                    <FileText className="h-3.5 w-3.5" />
+                    {challenge.submission_mode === 'drive_link'
+                      ? 'Google Drive Link'
+                      : `${challenge.submission_mode} upload`}
+                  </div>
                 </div>
               </div>
             </div>

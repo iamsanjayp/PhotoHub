@@ -60,7 +60,7 @@ export default function NewChallengePage() {
     if (info && typeof info === 'object' && 'secure_url' in info) {
       setBannerUrl(info.secure_url)
       setValue('banner_url', info.secure_url)
-      toast.success('Challenge banner uploaded!')
+      toast.success('Challenge poster uploaded!')
     }
   }
 
@@ -109,19 +109,19 @@ export default function NewChallengePage() {
       <Card className="border-white/5 bg-black/40 backdrop-blur-xl rounded-2xl overflow-hidden max-w-4xl mx-auto shadow-2xl">
         <CardContent className="p-6 sm:p-8">
           <form onSubmit={handleSubmit(onSubmit)} className="space-y-6">
-            {/* Banner Upload */}
+            {/* Poster Upload */}
             <div className="space-y-2">
-              <Label className="text-neutral-300 font-semibold text-xs uppercase tracking-wider">Challenge Banner</Label>
+              <Label className="text-neutral-300 font-semibold text-xs uppercase tracking-wider">Challenge Poster Image (4:5 Aspect Ratio)</Label>
               {bannerUrl ? (
-                <div className="relative aspect-[21/9] w-full bg-neutral-900 border border-white/5 rounded-2xl overflow-hidden group">
-                  <img src={bannerUrl} alt="Banner Preview" className="h-full w-full object-cover" />
+                <div className="relative aspect-[4/5] max-w-xs mx-auto w-full bg-neutral-950 border border-white/5 rounded-2xl overflow-hidden group flex items-center justify-center">
+                  <img src={bannerUrl} alt="Poster Preview" className="h-full w-full object-contain" />
                   <button
                     type="button"
                     onClick={() => {
                       setBannerUrl('')
                       setValue('banner_url', '')
                     }}
-                    className="absolute top-2 right-2 p-1.5 rounded-full bg-black/50 hover:bg-black/70 border border-white/10 text-white"
+                    className="absolute top-2 right-2 p-1.5 rounded-full bg-black/50 hover:bg-black/70 border border-white/10 text-white z-10"
                   >
                     <XIcon className="h-4 w-4" />
                   </button>
@@ -135,11 +135,11 @@ export default function NewChallengePage() {
                     <button
                       type="button"
                       onClick={() => open()}
-                      className="w-full aspect-[21/9] border-2 border-dashed border-white/5 bg-white/[0.01] hover:bg-white/[0.02] rounded-2xl flex flex-col items-center justify-center gap-2 text-neutral-400 hover:text-white transition-all select-none group"
+                      className="w-full aspect-[4/5] max-w-xs mx-auto border-2 border-dashed border-white/5 bg-white/[0.01] hover:bg-white/[0.02] rounded-2xl flex flex-col items-center justify-center gap-2 text-neutral-400 hover:text-white transition-all select-none group"
                     >
                       <ImageIcon className="h-8 w-8 text-neutral-600 group-hover:text-cyan-400 transition-colors" />
-                      <span className="text-xs font-semibold">Click to upload challenge banner</span>
-                      <span className="text-[10px] text-neutral-500">Max size: 10MB (JPEG, PNG)</span>
+                      <span className="text-xs font-semibold">Click to upload challenge poster</span>
+                      <span className="text-[10px] text-neutral-500">Suggested ratio: 4:5. Max size: 10MB (JPEG, PNG)</span>
                     </button>
                   )}
                 </CldUploadWidget>

@@ -97,12 +97,12 @@ export default function EventForm({ initialData, isEdit = false }: EventFormProp
     <Card className="border-white/5 bg-black/40 backdrop-blur-xl rounded-2xl overflow-hidden max-w-4xl mx-auto shadow-2xl">
       <CardContent className="p-6 sm:p-8">
         <form onSubmit={handleSubmit(onSubmit)} className="space-y-6">
-          {/* Banner Upload */}
+          {/* Poster Upload */}
           <div className="space-y-2">
-            <Label className="text-neutral-300 font-semibold text-xs uppercase tracking-wider">Event Banner Image</Label>
+            <Label className="text-neutral-300 font-semibold text-xs uppercase tracking-wider">Event Poster Image (4:5 Aspect Ratio)</Label>
             {bannerUrl ? (
-              <div className="relative aspect-[21/9] w-full bg-neutral-900 border border-white/5 rounded-2xl overflow-hidden group">
-                <img src={bannerUrl} alt="Banner Preview" className="h-full w-full object-cover" />
+              <div className="relative aspect-[4/5] max-w-xs mx-auto w-full bg-neutral-950 border border-white/5 rounded-2xl overflow-hidden group flex items-center justify-center">
+                <img src={bannerUrl} alt="Poster Preview" className="h-full w-full object-contain" />
                 <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center">
                   <Button
                     type="button"
@@ -127,11 +127,11 @@ export default function EventForm({ initialData, isEdit = false }: EventFormProp
                   <button
                     type="button"
                     onClick={() => open()}
-                    className="w-full aspect-[21/9] border-2 border-dashed border-white/5 bg-white/[0.01] hover:bg-white/[0.02] rounded-2xl flex flex-col items-center justify-center gap-2 text-neutral-400 hover:text-white transition-all select-none group"
+                    className="w-full aspect-[4/5] max-w-xs mx-auto border-2 border-dashed border-white/5 bg-white/[0.01] hover:bg-white/[0.02] rounded-2xl flex flex-col items-center justify-center gap-2 text-neutral-400 hover:text-white transition-all select-none group"
                   >
                     <ImageIcon className="h-8 w-8 text-neutral-600 group-hover:text-cyan-400 transition-colors" />
-                    <span className="text-xs font-semibold">Click to upload event banner</span>
-                    <span className="text-[10px] text-neutral-500">Suggested ratio: 21:9 (Max 10MB)</span>
+                    <span className="text-xs font-semibold">Click to upload event poster</span>
+                    <span className="text-[10px] text-neutral-500">Suggested ratio: 4:5 (Max 10MB)</span>
                   </button>
                 )}
               </CldUploadWidget>
