@@ -206,7 +206,7 @@ export async function assignTeamMember(requestId: string, userId: string, role: 
       throw new Error('Unauthorized')
     }
 
-    const supabase = await createClient()
+    const supabase = await createAdminClient()
 
     // If equipment is selected, verify camera access permissions
     if (equipmentId) {
@@ -301,7 +301,7 @@ export async function removeAssignment(assignmentId: string) {
       throw new Error('Unauthorized')
     }
 
-    const supabase = await createClient()
+    const supabase = await createAdminClient()
 
     // Get assignment details first to see if equipment was checked out
     const { data: assignment } = await supabase

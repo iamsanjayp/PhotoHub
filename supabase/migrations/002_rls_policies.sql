@@ -19,24 +19,24 @@ RETURNS public.user_role AS $$
   SELECT role FROM public.profiles WHERE id = auth.uid();
 $$ LANGUAGE sql STABLE SECURITY DEFINER SET search_path = public;
 
--- Returns TRUE if the current user is an admin or leader
+-- Returns TRUE if the current user is an admin, leader, board member, or committee member
 CREATE OR REPLACE FUNCTION public.is_admin_or_leader()
 RETURNS BOOLEAN AS $$
   SELECT EXISTS (
     SELECT 1 FROM public.profiles
     WHERE id = auth.uid()
-      AND role IN ('admin', 'leader')
+      AND role IN ('admin', 'leader', 'board_member', 'committee_member')
       AND is_active = true
   );
 $$ LANGUAGE sql STABLE SECURITY DEFINER SET search_path = public;
 
--- Returns TRUE if the current user is an admin
+-- Returns TRUE if the current user is an admin or board member
 CREATE OR REPLACE FUNCTION public.is_admin()
 RETURNS BOOLEAN AS $$
   SELECT EXISTS (
     SELECT 1 FROM public.profiles
     WHERE id = auth.uid()
-      AND role = 'admin'
+      AND role IN ('admin', 'board_member')
       AND is_active = true
   );
 $$ LANGUAGE sql STABLE SECURITY DEFINER SET search_path = public;
