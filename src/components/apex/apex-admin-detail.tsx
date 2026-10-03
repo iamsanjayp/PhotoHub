@@ -55,8 +55,8 @@ export default function ApexAdminDetail({
   const [selectedRole, setSelectedRole] = useState('photographer')
   const [selectedEquipmentId, setSelectedEquipmentId] = useState('')
 
-  // Filter available equipment
-  const availableEquipment = equipmentList.filter(e => e.status === 'available')
+  // Filter usable equipment (exclude maintenance and retired)
+  const usableEquipment = equipmentList.filter(e => e.status !== 'maintenance' && e.status !== 'retired')
 
   // Status handlers
   const handleStatusTransition = async (status: 'ongoing' | 'completed' | 'delivered') => {
@@ -429,11 +429,13 @@ export default function ApexAdminDetail({
                         className="w-full border border-white/5 bg-neutral-950 text-white rounded-xl px-3 py-2 text-sm focus:border-cyan-500/30 h-11 focus:outline-none"
                       >
                         <option value="">Check out gear...</option>
-                        {availableEquipment.map(eq => (
-                          <option key={eq.id} value={eq.id}>{eq.name} ({eq.model || eq.type})</option>
+                        {usableEquipment.map(eq => (
+                          <option key={eq.id} value={eq.id}>
+                            {eq.name} ({eq.model || eq.type}){eq.status === 'assigned' ? ' — [Reserved / In Use]' : ''}
+                          </option>
                         ))}
                       </select>
-                      <p className="text-[10px] text-neutral-500 px-1 mt-1">Only available gear listed.</p>
+                      <p className="text-[10px] text-neutral-500 px-1 mt-1">Gear marked [Reserved / In Use] can still be assigned if available for this date.</p>
                     </div>
 
                     <Button

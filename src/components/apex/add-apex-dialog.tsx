@@ -103,7 +103,7 @@ export function AddApexDialog({
     }
   }, [isOpen, dataLoaded])
 
-  const availableEquipment = equipmentList.filter((e) => e.status === 'available')
+  const usableEquipment = equipmentList.filter((e) => e.status !== 'maintenance' && e.status !== 'retired')
 
   const handleAddCrew = () => {
     const unselectedMember = members.find((m) => !crew.some((c) => c.user_id === m.id))
@@ -543,7 +543,8 @@ export function AddApexDialog({
                                 {(val) => {
                                   if (!val || val === 'none') return 'No Equipment (Personal)'
                                   const eq = equipmentList.find((item) => item.id === val)
-                                  return eq ? `${eq.name} (${eq.type})` : 'No Equipment (Personal)'
+                                  if (!eq) return 'No Equipment (Personal)'
+                                  return `${eq.name} (${eq.type})${eq.status === 'assigned' ? ' [Reserved]' : ''}`
                                 }}
                               </SelectValue>
                             </SelectTrigger>
@@ -551,9 +552,10 @@ export function AddApexDialog({
                               <SelectItem value="none" className="text-xs focus:bg-white/5">
                                 No Equipment (Personal)
                               </SelectItem>
-                              {availableEquipment.map((eq) => {
+                              {usableEquipment.map((eq) => {
                                 const isCamera = eq.type === 'camera'
                                 const isDisallowed = isCamera && !isEligibleForCamera
+                                const isAssigned = eq.status === 'assigned'
                                 return (
                                   <SelectItem
                                     key={eq.id}
@@ -561,10 +563,17 @@ export function AddApexDialog({
                                     disabled={isDisallowed}
                                     className="text-xs focus:bg-white/5 disabled:opacity-40"
                                   >
-                                    <div className="flex items-center gap-1.5">
-                                      <span className="capitalize">
-                                        {eq.name} ({eq.type})
-                                      </span>
+                                    <div className="flex items-center justify-between w-full gap-2">
+                                      <div className="flex items-center gap-1.5">
+                                        <span className="capitalize">
+                                          {eq.name} ({eq.type})
+                                        </span>
+                                        {isAssigned && (
+                                          <span className="text-[9px] text-amber-400 font-semibold px-1.5 py-0.5 rounded bg-amber-500/10 border border-amber-500/20">
+                                            Reserved / In Use
+                                          </span>
+                                        )}
+                                      </div>
                                       {isDisallowed && (
                                         <span className="text-[9px] text-amber-500 font-bold">
                                           (Camera Holder only)
