@@ -60,7 +60,14 @@ INSERT INTO auth.users (
   raw_user_meta_data,
   is_super_admin,
   created_at,
-  updated_at
+  updated_at,
+  confirmation_token,
+  recovery_token,
+  email_change,
+  email_change_token_new,
+  email_change_token_current,
+  phone_change,
+  phone_change_token
 ) VALUES (
   '00000000-0000-0000-0000-000000000000',
   '5ea245f5-9116-41d1-a45e-51c82f3a478a',
@@ -74,8 +81,22 @@ INSERT INTO auth.users (
   '{"iss": "https://accounts.google.com", "sub": "109523893649009550403", "name": "photo hub", "email": "photohub@bitsathy.ac.in", "full_name": "PhotoHub Admin", "avatar_url": "https://lh3.googleusercontent.com/a/ACg8ocKywMgI62YlhZ8f5wIuU9I05BEvVkChFgfo5uxqXMSWpa_JmDRE=s96-c", "provider_id": "109523893649009550403", "custom_claims": {"hd": "bitsathy.ac.in"}, "email_verified": true, "phone_verified": false}'::jsonb,
   false,
   NOW(),
-  NOW()
-) ON CONFLICT (id) DO NOTHING;
+  NOW(),
+  '',
+  '',
+  '',
+  '',
+  '',
+  '',
+  ''
+) ON CONFLICT (id) DO UPDATE SET
+  confirmation_token = '',
+  recovery_token = '',
+  email_change = '',
+  email_change_token_new = '',
+  email_change_token_current = '',
+  phone_change = '',
+  phone_change_token = '';
 
 INSERT INTO public.profiles (
   id,
