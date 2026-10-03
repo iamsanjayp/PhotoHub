@@ -7,7 +7,7 @@ import { revalidatePath } from 'next/cache'
 
 async function assertAdminOrLeader() {
   const profile = await getCurrentProfile()
-  if (!profile || !['admin', 'board_member', 'leader'].includes(profile.role)) {
+  if (!profile || !['admin', 'board_member', 'committee_member', 'leader'].includes(profile.role)) {
     throw new Error('Unauthorized')
   }
   return profile

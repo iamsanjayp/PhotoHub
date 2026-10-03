@@ -487,6 +487,7 @@ CREATE TABLE public.announcements (
   is_pinned  BOOLEAN DEFAULT false,
   priority   INTEGER DEFAULT 0,
   expires_at TIMESTAMPTZ,
+  external_link TEXT,
   created_by UUID REFERENCES public.profiles(id),
   deleted_at TIMESTAMPTZ,
   created_at TIMESTAMPTZ DEFAULT NOW(),
