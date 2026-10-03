@@ -2,7 +2,7 @@ import { type NextRequest, NextResponse } from 'next/server'
 import { updateSession } from '@/lib/supabase/middleware'
 
 // Routes that don't require authentication
-const publicRoutes = ['/', '/login', '/unauthorized', '/apex-request', '/auth/callback', '/auth/confirm']
+const publicRoutes = ['/', '/login', '/unauthorized', '/apex-request', '/auth/callback', '/auth/confirm', '/auth/v1', '/rest/v1', '/storage/v1']
 
 // Routes that require admin or leader role
 const adminRoutes = ['/admin']
@@ -10,10 +10,13 @@ const adminRoutes = ['/admin']
 export async function proxy(request: NextRequest) {
   const { pathname } = request.nextUrl
 
-  // Skip middleware for static files and API routes
+  // Skip middleware for static files, API routes, and backend Supabase endpoints
   if (
     pathname.startsWith('/_next') ||
     pathname.startsWith('/api') ||
+    pathname.startsWith('/auth/v1') ||
+    pathname.startsWith('/rest/v1') ||
+    pathname.startsWith('/storage/v1') ||
     pathname.includes('.') // static files
   ) {
     return NextResponse.next()

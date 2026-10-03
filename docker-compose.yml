@@ -109,6 +109,7 @@ services:
       args:
         NEXT_PUBLIC_SUPABASE_URL: ${NEXT_PUBLIC_SUPABASE_URL:-http://localhost:8000}
         NEXT_PUBLIC_SUPABASE_ANON_KEY: ${ANON_KEY}
+        SUPABASE_INTERNAL_URL: http://kong:8000
     container_name: photohub-web
     restart: unless-stopped
     depends_on:

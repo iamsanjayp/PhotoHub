@@ -21,7 +21,7 @@ const nextConfig = {
     ],
   },
   async rewrites() {
-    const internalSupabaseUrl = process.env.SUPABASE_INTERNAL_URL || 'http://localhost:8000';
+    const internalSupabaseUrl = process.env.SUPABASE_INTERNAL_URL || 'http://kong:8000';
     return [
       {
         source: '/auth/v1/:path*',
