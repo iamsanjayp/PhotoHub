@@ -15,7 +15,8 @@ CREATE TABLE IF NOT EXISTS public.event_invites (
   event_id uuid NOT NULL REFERENCES public.events(id) ON DELETE CASCADE,
   user_id uuid NOT NULL REFERENCES public.profiles(id) ON DELETE CASCADE,
   invited_by uuid REFERENCES public.profiles(id) ON DELETE SET NULL,
-  created_at timestamp with time zone DEFAULT now()
+  created_at timestamp with time zone DEFAULT now(),
+  CONSTRAINT event_invites_event_id_user_id_key UNIQUE (event_id, user_id)
 );
 
 CREATE INDEX IF NOT EXISTS idx_event_invites_event_id ON public.event_invites USING btree (event_id);
@@ -55,7 +56,8 @@ CREATE TABLE IF NOT EXISTS public.meeting_attendance (
   notes text,
   marked_by uuid REFERENCES public.profiles(id) ON DELETE SET NULL,
   created_at timestamp with time zone DEFAULT now(),
-  updated_at timestamp with time zone DEFAULT now()
+  updated_at timestamp with time zone DEFAULT now(),
+  CONSTRAINT meeting_attendance_meeting_id_user_id_key UNIQUE (meeting_id, user_id)
 );
 
 CREATE INDEX IF NOT EXISTS idx_meeting_attendance_meeting_id ON public.meeting_attendance USING btree (meeting_id);
@@ -70,7 +72,8 @@ CREATE TABLE IF NOT EXISTS public.meeting_invites (
   id uuid DEFAULT gen_random_uuid() NOT NULL PRIMARY KEY,
   meeting_id uuid NOT NULL REFERENCES public.meetings(id) ON DELETE CASCADE,
   user_id uuid NOT NULL REFERENCES public.profiles(id) ON DELETE CASCADE,
-  created_at timestamp with time zone DEFAULT now()
+  created_at timestamp with time zone DEFAULT now(),
+  CONSTRAINT meeting_invites_meeting_id_user_id_key UNIQUE (meeting_id, user_id)
 );
 
 CREATE INDEX IF NOT EXISTS idx_meeting_invites_meeting_id ON public.meeting_invites USING btree (meeting_id);
