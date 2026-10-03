@@ -1,6 +1,6 @@
 export function customFetch(url: RequestInfo | URL, init?: RequestInit): Promise<Response> {
   let urlString = typeof url === 'string' ? url : url instanceof URL ? url.toString() : url.url
-  const publicUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || 'http://localhost:8000'
+  const publicUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || 'https://photohub.bitsathy.ac.in'
   const internalUrl = process.env.SUPABASE_INTERNAL_URL || 'http://kong:8000'
 
   if (typeof window === 'undefined' && publicUrl && internalUrl && urlString.startsWith(publicUrl)) {

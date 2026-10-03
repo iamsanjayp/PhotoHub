@@ -3,9 +3,6 @@ import { createServerClient } from '@supabase/ssr'
 import { customFetch } from '@/lib/supabase/fetch'
 
 function getPublicOrigin() {
-  if (process.env.NODE_ENV === 'development') {
-    return 'http://localhost:3000'
-  }
   return process.env.SITE_URL || 'https://photohub.bitsathy.ac.in'
 }
 

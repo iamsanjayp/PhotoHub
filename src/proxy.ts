@@ -8,9 +8,6 @@ const publicRoutes = ['/', '/login', '/unauthorized', '/apex-request', '/auth/ca
 const adminRoutes = ['/admin']
 
 function getPublicOrigin() {
-  if (process.env.NODE_ENV === 'development') {
-    return 'http://localhost:3000'
-  }
   return process.env.SITE_URL || 'https://photohub.bitsathy.ac.in'
 }
 
