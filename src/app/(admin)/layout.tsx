@@ -17,7 +17,7 @@ export default async function AdminLayout({
     redirect('/login')
   }
 
-  if (!['admin', 'leader'].includes(profile.role)) {
+  if (!['admin', 'board_member', 'leader'].includes(profile.role)) {
     redirect('/dashboard')
   }
 

@@ -13,7 +13,7 @@ import {
 import { Button } from '@/components/ui/button'
 import { Textarea } from '@/components/ui/textarea'
 import { Label } from '@/components/ui/label'
-import { CldUploadWidget } from 'next-cloudinary'
+import { MediaUpload } from '@/components/ui/media-upload'
 import { PlusCircle, Loader2, Image as ImageIcon, Video, Trash2, X } from 'lucide-react'
 import { toast } from 'sonner'
 import { useQueryClient } from '@tanstack/react-query'
@@ -137,26 +137,22 @@ export default function CreatePostDialog() {
           {/* Upload widget trigger */}
           <div className="space-y-2 pt-2 border-t border-white/5 flex items-center justify-between">
             <span className="text-xs text-neutral-500 font-medium">Add media to post:</span>
-            <CldUploadWidget
-              uploadPreset="photohub_unsigned"
+            <MediaUpload
               onSuccess={handleUploadSuccess}
-              onClose={() => {
-                document.body.style.overflow = '';
-                document.body.style.pointerEvents = '';
-              }}
             >
-              {({ open }) => (
+              {({ open, isUploading }) => (
                 <Button
                   type="button"
                   onClick={() => open()}
+                  disabled={isUploading}
                   variant="outline"
                   className="h-9 border-white/10 hover:bg-white/5 text-xs font-semibold rounded-xl text-white gap-1.5"
                 >
                   <ImageIcon className="h-4 w-4 text-neutral-400" />
-                  <span>Upload Image/Video</span>
+                  <span>{isUploading ? 'Uploading...' : 'Upload Image/Video'}</span>
                 </Button>
               )}
-            </CldUploadWidget>
+            </MediaUpload>
           </div>
 
           <div className="flex gap-3 justify-end pt-3 border-t border-white/5">

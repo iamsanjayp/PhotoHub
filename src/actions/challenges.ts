@@ -1,13 +1,16 @@
 'use server'
 
 import { createClient } from '@/lib/supabase/server'
+import { createAdminClient } from '@/lib/supabase/admin'
 import { getCurrentProfile } from './auth'
 import { revalidatePath } from 'next/cache'
 
+import { isAdminOrBoard } from '@/lib/constants/roles'
+
 async function assertAdminOrLeader() {
   const profile = await getCurrentProfile()
-  if (!profile || !['admin', 'leader'].includes(profile.role)) {
-    throw new Error('Unauthorized')
+  if (!profile || !isAdminOrBoard(profile.role)) {
+    throw new Error('Unauthorized. Admin or Board Member privileges required.')
   }
   return profile
 }
@@ -25,7 +28,7 @@ export async function createChallenge(input: {
 }) {
   try {
     const creator = await assertAdminOrLeader()
-    const supabase = await createClient()
+    const supabase = await createAdminClient()
 
     const { data, error } = await supabase
       .from('challenges')
@@ -140,7 +143,7 @@ export async function getChallengeById(id: string) {
 export async function deleteChallenge(id: string) {
   try {
     await assertAdminOrLeader()
-    const supabase = await createClient()
+    const supabase = await createAdminClient()
 
     const { error } = await supabase
       .from('challenges')
@@ -160,3 +163,39 @@ export async function deleteChallenge(id: string) {
     return { error: error.message || 'Failed to delete challenge' }
   }
 }
+
+// 5. ADMIN ONLY: Get full challenge export data
+export async function getChallengeExportData(challengeId: string) {
+  try {
+    await assertAdminOrLeader()
+    const supabase = await createAdminClient()
+
+    const { data: challenge, error: challengeError } = await supabase
+      .from('challenges')
+      .select('*')
+      .eq('id', challengeId)
+      .single()
+
+    if (challengeError) throw challengeError
+
+    const { data: submissions, error: subError } = await supabase
+      .from('submissions')
+      .select('*, profiles:profiles!submissions_user_id_fkey(*)')
+      .eq('submittable_type', 'challenge')
+      .eq('submittable_id', challengeId)
+      .order('created_at', { ascending: false })
+
+    if (subError) throw subError
+
+    return {
+      data: {
+        challenge,
+        submissions: submissions || [],
+      },
+    }
+  } catch (error: any) {
+    console.error('Error in getChallengeExportData:', error)
+    return { error: error.message || 'Failed to fetch challenge export data' }
+  }
+}
+

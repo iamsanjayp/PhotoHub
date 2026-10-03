@@ -18,9 +18,10 @@ import {
 } from '@/components/ui/dropdown-menu'
 import CommentSection from './comment-section'
 import { formatDistanceToNow } from 'date-fns'
+import Link from 'next/link'
 import { Heart, MessageCircle, MoreVertical, Trash2, Shield, Bookmark, Star, ChevronLeft, ChevronRight, Check, X, Send } from 'lucide-react'
 import { toast } from 'sonner'
-import { cn } from '@/lib/utils'
+import { cn, getMediaUrl } from '@/lib/utils'
 import { useQueryClient } from '@tanstack/react-query'
 
 export default function PostCard({ post, isModerationMode = false }: { post: Post; isModerationMode?: boolean }) {
@@ -32,7 +33,10 @@ export default function PostCard({ post, isModerationMode = false }: { post: Pos
   const [likeCount, setLikeCount] = useState(post.like_count || 0)
   const [isPending, startTransition] = useTransition()
 
-  const mediaList = post.post_media || []
+  const mediaList = (post.post_media || []).map((m) => ({
+    ...m,
+    url: getMediaUrl(m.url || m.cloudinary_public_id),
+  }))
   const hasMultipleMedia = mediaList.length > 1
 
   const handleLike = async () => {
@@ -127,18 +131,20 @@ export default function PostCard({ post, isModerationMode = false }: { post: Pos
       {/* Post Header */}
       <CardHeader className="p-4 flex flex-row items-center justify-between space-y-0">
         <div className="flex items-center gap-3">
-          <Avatar className="h-9 w-9 rounded-xl border border-white/5">
-            <AvatarImage src={post.profiles?.avatar_url || undefined} alt="avatar" className="object-cover" />
-            <AvatarFallback className="bg-neutral-800 text-neutral-300 text-sm font-bold rounded-xl">
-              {post.profiles?.full_name?.substring(0, 2).toUpperCase() || 'PH'}
-            </AvatarFallback>
-          </Avatar>
+          <Link href={`/members/${post.user_id}`} className="shrink-0 transition-transform hover:scale-105">
+            <Avatar className="h-9 w-9 rounded-xl border border-white/5">
+              <AvatarImage src={post.profiles?.avatar_url || undefined} alt="avatar" className="object-cover" />
+              <AvatarFallback className="bg-neutral-800 text-neutral-300 text-sm font-bold rounded-xl">
+                {post.profiles?.full_name?.substring(0, 2).toUpperCase() || 'PH'}
+              </AvatarFallback>
+            </Avatar>
+          </Link>
           
           <div className="min-w-0">
             <div className="flex items-center gap-1.5 flex-wrap">
-              <span className="text-sm font-bold text-white block truncate leading-none">
+              <Link href={`/members/${post.user_id}`} className="text-sm font-bold text-white block truncate leading-none hover:underline underline-offset-2">
                 {post.profiles?.full_name || 'Club Member'}
-              </span>
+              </Link>
               {post.is_featured && (
                 <Badge className="bg-cyan-500/10 text-cyan-400 border-none text-[8px] font-bold px-1 py-0 shadow-md">
                   <Star className="h-2 w-2 mr-0.5 fill-cyan-400" /> Featured
@@ -186,18 +192,18 @@ export default function PostCard({ post, isModerationMode = false }: { post: Pos
 
       {/* Post Media Display */}
       {mediaList.length > 0 && (
-        <div className="relative aspect-square w-full bg-neutral-950 flex items-center justify-center overflow-hidden border-y border-white/5">
+        <div className="relative w-full bg-neutral-950 flex items-center justify-center overflow-hidden border-y border-white/5 max-h-[80vh]">
           {mediaList[currentMediaIndex].media_type === 'image' ? (
             <img 
               src={mediaList[currentMediaIndex].url} 
               alt="Post Media" 
-              className="h-full w-full object-cover"
+              className="w-full h-auto max-h-[80vh] object-contain"
             />
           ) : (
             <video 
               src={mediaList[currentMediaIndex].url} 
               controls 
-              className="h-full w-full object-contain"
+              className="w-full h-auto max-h-[80vh] object-contain"
             />
           )}
 
@@ -308,7 +314,7 @@ export default function PostCard({ post, isModerationMode = false }: { post: Pos
 
       {/* Comments Dropdown */}
       {showComments && !isModerationMode && (
-        <CommentSection postId={post.id} initialComments={[]} />
+        <CommentSection postId={post.id} initialComments={post.comments || []} />
       )}
 
     </Card>

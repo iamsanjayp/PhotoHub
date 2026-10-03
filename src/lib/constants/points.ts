@@ -9,6 +9,8 @@ export const POINT_VALUES: Record<PointSource, number> = {
   post_featured: 20,
   manual: 0, // Variable, set by admin
   consistency_bonus: 10,
+  shoot_idea: 20,
+  shoot_completed: 30,
 }
 
 export const POINT_LABELS: Record<PointSource, string> = {
@@ -20,4 +22,6 @@ export const POINT_LABELS: Record<PointSource, string> = {
   post_featured: 'Post Featured',
   manual: 'Manual Award',
   consistency_bonus: 'Consistency Bonus',
+  shoot_idea: 'Shoot Idea Approved',
+  shoot_completed: 'Shoot Production Completed',
 }

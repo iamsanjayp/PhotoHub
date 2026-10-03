@@ -16,10 +16,13 @@ import {
   Trash2, 
   Loader2,
   FileText,
-  Eye
+  Eye,
+  Download
 } from 'lucide-react'
 import { toast } from 'sonner'
 import { cn } from '@/lib/utils'
+import { ExportResultsButton } from '@/components/common/export-results-button'
+import { exportAllChallengesSummary } from '@/lib/export-csv'
 
 export default function AdminChallengesPage() {
   const [challenges, setChallenges] = useState<any[]>([])
@@ -74,12 +77,23 @@ export default function AdminChallengesPage() {
             Publish photo prompts and theme challenges. Track entries and moderate leaderboard points.
           </p>
         </div>
-        <Button asChild className="bg-gradient-to-r from-cyan-500 to-teal-500 text-black hover:opacity-90 font-bold rounded-xl h-11 px-5 flex items-center gap-1.5 shrink-0 self-start sm:self-auto">
-          <Link href="/admin/challenges/new">
-            <Plus className="h-5 w-5" />
-            New Challenge
-          </Link>
-        </Button>
+        <div className="flex items-center gap-2.5 shrink-0 self-start sm:self-auto flex-wrap">
+          <Button
+            onClick={() => exportAllChallengesSummary(challenges)}
+            variant="outline"
+            disabled={challenges.length === 0}
+            className="border-white/10 text-white hover:bg-white/5 font-semibold rounded-xl h-11 px-4 flex items-center gap-2"
+          >
+            <Download className="h-4 w-4 text-cyan-400" />
+            Export Overview
+          </Button>
+          <Button asChild className="bg-gradient-to-r from-cyan-500 to-teal-500 text-black hover:opacity-90 font-bold rounded-xl h-11 px-5 flex items-center gap-1.5">
+            <Link href="/admin/challenges/new">
+              <Plus className="h-5 w-5" />
+              New Challenge
+            </Link>
+          </Button>
+        </div>
       </div>
 
       {/* Filter / Search Bar */}
@@ -199,7 +213,16 @@ export default function AdminChallengesPage() {
 
                         {/* Actions */}
                         <td className="py-4 px-6 text-right">
-                          <div className="flex items-center justify-end gap-1">
+                          <div className="flex items-center justify-end gap-1.5">
+                            <ExportResultsButton
+                              type="challenge"
+                              id={challenge.id}
+                              title={challenge.title}
+                              size="icon"
+                              variant="ghost"
+                              className="h-8 w-8 hover:bg-cyan-500/10 hover:text-cyan-400 rounded-lg text-neutral-400"
+                              label={`Export results for ${challenge.title}`}
+                            />
                             <Button asChild size="icon" variant="ghost" className="h-8 w-8 hover:bg-cyan-500/10 hover:text-cyan-400 rounded-lg text-neutral-400">
                               <Link href={`/admin/challenges/${challenge.id}`}>
                                 <Eye className="h-4 w-4" />

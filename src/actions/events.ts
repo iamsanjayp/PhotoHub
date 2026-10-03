@@ -1,15 +1,18 @@
 'use server'
 
 import { createClient } from '@/lib/supabase/server'
+import { createAdminClient } from '@/lib/supabase/admin'
 import { getCurrentProfile } from './auth'
 import { createEventSchema, type CreateEventInput, type UpdateEventInput } from '@/lib/validators/events'
 import { revalidatePath } from 'next/cache'
 
+import { isAdminOrBoard, isClubCoreMember } from '@/lib/constants/roles'
+
 // Helper for role checks
 async function assertAdminOrLeader() {
   const profile = await getCurrentProfile()
-  if (!profile || !['admin', 'leader'].includes(profile.role)) {
-    throw new Error('Unauthorized. Admin or Leader privileges required.')
+  if (!profile || !isAdminOrBoard(profile.role)) {
+    throw new Error('Unauthorized. Admin or Board Member privileges required.')
   }
   return profile
 }
@@ -19,7 +22,7 @@ export async function createEvent(input: CreateEventInput) {
   try {
     const creator = await assertAdminOrLeader()
     const validated = createEventSchema.parse(input)
-    const supabase = await createClient()
+    const supabase = await createAdminClient()
 
     // Handle max_participants parsing if passed as empty string
     const maxParticipants = validated.max_participants === '' || validated.max_participants === undefined 
@@ -51,6 +54,15 @@ export async function createEvent(input: CreateEventInput) {
 
     if (error) throw error
 
+    if (data && (input as any).invited_user_ids?.length) {
+      const inviteRows = (input as any).invited_user_ids.map((uid: string) => ({
+        event_id: data.id,
+        user_id: uid,
+        invited_by: creator.id,
+      }))
+      await supabase.from('event_invites').upsert(inviteRows, { onConflict: 'event_id,user_id' })
+    }
+
     revalidatePath('/events')
     revalidatePath('/admin/events')
     return { success: true, data }
@@ -64,7 +76,7 @@ export async function createEvent(input: CreateEventInput) {
 export async function updateEvent(eventId: string, input: UpdateEventInput) {
   try {
     await assertAdminOrLeader()
-    const supabase = await createClient()
+    const supabase = await createAdminClient()
 
     // Filter fields to only update allowed columns
     const updateData: any = {
@@ -112,7 +124,7 @@ export async function updateEvent(eventId: string, input: UpdateEventInput) {
 export async function deleteEvent(eventId: string) {
   try {
     await assertAdminOrLeader()
-    const supabase = await createClient()
+    const supabase = await createAdminClient()
 
     const { error } = await supabase
       .from('events')
@@ -144,18 +156,14 @@ export async function getEvents(filters?: {
     const profile = await getCurrentProfile()
     if (!profile) throw new Error('Unauthorized')
 
-    const supabase = await createClient()
-    let query = supabase
+    const client = isAdminOrBoard(profile.role)
+      ? await createAdminClient()
+      : await createClient()
+    let query = client
       .from('events')
       .select('*')
       .is('deleted_at', null)
       .order('start_date', { ascending: true })
-
-    // Apply role-based visibility filter if not admin/leader
-    if (!['admin', 'leader'].includes(profile.role)) {
-      // Regular members can only see public and members_only events
-      query = query.in('visibility', ['public', 'members_only'])
-    }
 
     if (filters?.type && filters.type !== 'all') {
       query = query.eq('event_type', filters.type)
@@ -180,17 +188,45 @@ export async function getEvents(filters?: {
 
     if (error) throw error
 
+    // Fetch user's event invites if not admin/board
+    let invitedEventIdSet = new Set<string>()
+    if (!isAdminOrBoard(profile.role)) {
+      const { data: userInvites } = await client
+        .from('event_invites')
+        .select('event_id')
+        .eq('user_id', profile.id)
+      if (userInvites) {
+        userInvites.forEach((inv: any) => invitedEventIdSet.add(inv.event_id))
+      }
+    }
+
+    // Role-based visibility filtering:
+    // - admin/board: all events
+    // - committee_member: public, members_only, and invite_only (if invited)
+    // - member: public, and invite_only (if invited). CANNOT view members_only!
+    const visibleEvents = (data || []).filter((event: any) => {
+      if (isAdminOrBoard(profile.role)) return true
+      if (event.visibility === 'public') return true
+      if (event.visibility === 'members_only') {
+        return isClubCoreMember(profile.role)
+      }
+      if (event.visibility === 'invite_only') {
+        return invitedEventIdSet.has(event.id)
+      }
+      return false
+    })
+
     // Fetch registration counts and user's registration status
     const eventsWithMeta = await Promise.all(
-      (data || []).map(async (event) => {
+      visibleEvents.map(async (event: any) => {
         // Fetch count
-        const { count } = await supabase
+        const { count } = await client
           .from('event_registrations')
           .select('*', { count: 'exact', head: true })
           .eq('event_id', event.id)
 
         // Check if current user is registered
-        const { data: reg } = await supabase
+        const { data: reg } = await client
           .from('event_registrations')
           .select('id, status')
           .eq('event_id', event.id)
@@ -229,6 +265,24 @@ export async function getEventById(eventId: string) {
 
     if (error) throw error
 
+    // Role-based visibility check for single event
+    if (!isAdminOrBoard(profile.role)) {
+      if (event.visibility === 'members_only' && !isClubCoreMember(profile.role)) {
+        return { error: 'Restricted: This event is open only to Board and Committee Members.' }
+      }
+      if (event.visibility === 'invite_only') {
+        const { data: invite } = await supabase
+          .from('event_invites')
+          .select('id')
+          .eq('event_id', eventId)
+          .eq('user_id', profile.id)
+          .maybeSingle()
+        if (!invite) {
+          return { error: 'Restricted: This event is invite-only.' }
+        }
+      }
+    }
+
     // Registration count
     const { count } = await supabase
       .from('event_registrations')
@@ -254,6 +308,73 @@ export async function getEventById(eventId: string) {
   } catch (error: any) {
     console.error('Error in getEventById:', error)
     return { error: error.message || 'Failed to fetch event detail' }
+  }
+}
+
+// 5b. ADMIN/BOARD: Manage Event Invites
+export async function getEventInvites(eventId: string) {
+  try {
+    await assertAdminOrLeader()
+    const supabase = await createAdminClient()
+    const { data, error } = await supabase
+      .from('event_invites')
+      .select('*, profiles:profiles!event_invites_user_id_fkey(*)')
+      .eq('event_id', eventId)
+      .order('created_at', { ascending: true })
+
+    if (error) throw error
+    return { data: data || [] }
+  } catch (error: any) {
+    console.error('Error in getEventInvites:', error)
+    return { error: error.message || 'Failed to fetch event invites' }
+  }
+}
+
+export async function inviteUsersToEvent(eventId: string, userIds: string[]) {
+  try {
+    const admin = await assertAdminOrLeader()
+    if (!userIds || userIds.length === 0) return { success: true }
+    const supabase = await createAdminClient()
+
+    const rows = userIds.map((uid) => ({
+      event_id: eventId,
+      user_id: uid,
+      invited_by: admin.id,
+    }))
+
+    const { error } = await supabase
+      .from('event_invites')
+      .upsert(rows, { onConflict: 'event_id,user_id' })
+
+    if (error) throw error
+
+    revalidatePath(`/events/${eventId}`)
+    revalidatePath(`/admin/events/${eventId}`)
+    return { success: true }
+  } catch (error: any) {
+    console.error('Error in inviteUsersToEvent:', error)
+    return { error: error.message || 'Failed to invite users' }
+  }
+}
+
+export async function removeEventInvite(eventId: string, userId: string) {
+  try {
+    await assertAdminOrLeader()
+    const supabase = await createAdminClient()
+    const { error } = await supabase
+      .from('event_invites')
+      .delete()
+      .eq('event_id', eventId)
+      .eq('user_id', userId)
+
+    if (error) throw error
+
+    revalidatePath(`/events/${eventId}`)
+    revalidatePath(`/admin/events/${eventId}`)
+    return { success: true }
+  } catch (error: any) {
+    console.error('Error in removeEventInvite:', error)
+    return { error: error.message || 'Failed to remove invite' }
   }
 }
 
@@ -362,7 +483,7 @@ export async function unregisterFromEvent(eventId: string) {
 export async function getEventRegistrations(eventId: string) {
   try {
     await assertAdminOrLeader()
-    const supabase = await createClient()
+    const supabase = await createAdminClient()
 
     const { data, error } = await supabase
       .from('event_registrations')
@@ -383,7 +504,7 @@ export async function getEventRegistrations(eventId: string) {
 export async function markAttendance(eventId: string, userId: string, attended: boolean) {
   try {
     await assertAdminOrLeader()
-    const supabase = await createClient()
+    const supabase = await createAdminClient()
 
     const updateData: any = {
       attended,
@@ -418,7 +539,7 @@ export async function markAttendance(eventId: string, userId: string, attended: 
 export async function bulkMarkAttendance(eventId: string, userIds: string[], attended: boolean) {
   try {
     await assertAdminOrLeader()
-    const supabase = await createClient()
+    const supabase = await createAdminClient()
 
     const updateData: any = {
       attended,
@@ -453,7 +574,7 @@ export async function bulkMarkAttendance(eventId: string, userIds: string[], att
 export async function selectWinners(eventId: string, submissionIds: string[]) {
   try {
     await assertAdminOrLeader()
-    const supabase = await createClient()
+    const supabase = await createAdminClient()
 
     // 1. Reset winners for this submittable
     await supabase
@@ -484,7 +605,7 @@ export async function selectWinners(eventId: string, submissionIds: string[]) {
 export async function getEventAnalytics(eventId: string) {
   try {
     await assertAdminOrLeader()
-    const supabase = await createClient()
+    const supabase = await createAdminClient()
 
     // Registrations count
     const { count: registered } = await supabase
@@ -520,3 +641,48 @@ export async function getEventAnalytics(eventId: string) {
     return { error: error.message || 'Failed to fetch analytics' }
   }
 }
+
+// 13. ADMIN ONLY: Get full export data for an event (event, registrations, submissions)
+export async function getEventExportData(eventId: string) {
+  try {
+    await assertAdminOrLeader()
+    const supabase = await createAdminClient()
+
+    const { data: event, error: eventError } = await supabase
+      .from('events')
+      .select('*')
+      .eq('id', eventId)
+      .single()
+
+    if (eventError) throw eventError
+
+    const { data: registrations, error: regError } = await supabase
+      .from('event_registrations')
+      .select('*, profiles(*)')
+      .eq('event_id', eventId)
+      .order('registered_at', { ascending: true })
+
+    if (regError) throw regError
+
+    const { data: submissions, error: subError } = await supabase
+      .from('submissions')
+      .select('*, profiles:profiles!submissions_user_id_fkey(*)')
+      .eq('submittable_type', 'event')
+      .eq('submittable_id', eventId)
+      .order('created_at', { ascending: false })
+
+    if (subError) throw subError
+
+    return {
+      data: {
+        event,
+        registrations: registrations || [],
+        submissions: submissions || [],
+      },
+    }
+  } catch (error: any) {
+    console.error('Error in getEventExportData:', error)
+    return { error: error.message || 'Failed to fetch event export data' }
+  }
+}
+

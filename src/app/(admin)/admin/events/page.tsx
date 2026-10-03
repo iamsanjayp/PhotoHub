@@ -20,10 +20,13 @@ import {
   Lock,
   Globe,
   Loader2,
-  AlertTriangle
+  AlertTriangle,
+  Download
 } from 'lucide-react'
 import { toast } from 'sonner'
 import { cn } from '@/lib/utils'
+import { ExportResultsButton } from '@/components/common/export-results-button'
+import { exportAllEventsSummary } from '@/lib/export-csv'
 
 export default function AdminEventsPage() {
   const [events, setEvents] = useState<any[]>([])
@@ -98,12 +101,23 @@ export default function AdminEventsPage() {
             Create, moderate, view registrations, check attendance, and select winners for club events.
           </p>
         </div>
-        <Button asChild className="bg-gradient-to-r from-cyan-500 to-teal-500 text-black hover:opacity-90 font-bold rounded-xl h-11 px-5 flex items-center gap-1.5 shrink-0 self-start sm:self-auto">
-          <Link href="/admin/events/new">
-            <Plus className="h-5 w-5" />
-            Add New Event
-          </Link>
-        </Button>
+        <div className="flex items-center gap-2.5 shrink-0 self-start sm:self-auto flex-wrap">
+          <Button
+            onClick={() => exportAllEventsSummary(events)}
+            variant="outline"
+            disabled={events.length === 0}
+            className="border-white/10 text-white hover:bg-white/5 font-semibold rounded-xl h-11 px-4 flex items-center gap-2"
+          >
+            <Download className="h-4 w-4 text-cyan-400" />
+            Export Overview
+          </Button>
+          <Button asChild className="bg-gradient-to-r from-cyan-500 to-teal-500 text-black hover:opacity-90 font-bold rounded-xl h-11 px-5 flex items-center gap-1.5">
+            <Link href="/admin/events/new">
+              <Plus className="h-5 w-5" />
+              Add New Event
+            </Link>
+          </Button>
+        </div>
       </div>
 
       {/* Filter / Search Bar */}
@@ -244,7 +258,16 @@ export default function AdminEventsPage() {
 
                         {/* Actions */}
                         <td className="py-4 px-6 text-right">
-                          <div className="flex items-center justify-end gap-2 opacity-80 group-hover:opacity-100 transition-opacity">
+                          <div className="flex items-center justify-end gap-1.5 opacity-80 group-hover:opacity-100 transition-opacity">
+                            <ExportResultsButton
+                              type="event"
+                              id={event.id}
+                              title={event.title}
+                              size="icon"
+                              variant="ghost"
+                              className="h-8 w-8 hover:bg-cyan-500/10 hover:text-cyan-400 rounded-lg text-neutral-400"
+                              label={`Export results for ${event.title}`}
+                            />
                             <Button asChild size="icon" variant="ghost" className="h-8 w-8 hover:bg-cyan-500/10 hover:text-cyan-400 rounded-lg text-neutral-400">
                               <Link href={`/admin/events/${event.id}`}>
                                 <Eye className="h-4 w-4" />
@@ -315,7 +338,16 @@ export default function AdminEventsPage() {
                     </div>
                   </div>
 
-                  <div className="flex justify-end gap-2 border-t border-white/5 pt-3">
+                  <div className="flex justify-end gap-2 border-t border-white/5 pt-3 flex-wrap">
+                    <ExportResultsButton
+                      type="event"
+                      id={event.id}
+                      title={event.title}
+                      size="sm"
+                      variant="ghost"
+                      className="h-8 hover:bg-cyan-500/10 hover:text-cyan-400 rounded-lg text-neutral-400 gap-1 text-xs"
+                      label="Export"
+                    />
                     <Button asChild size="sm" variant="ghost" className="h-8 hover:bg-cyan-500/10 hover:text-cyan-400 rounded-lg text-neutral-400 gap-1">
                       <Link href={`/admin/events/${event.id}`}>
                         <Eye className="h-4 w-4" />

@@ -229,43 +229,68 @@ export default function LeaderboardPage() {
                   </TableRow>
                 </TableHeader>
                 <TableBody>
-                  {remaining.map((entry) => (
-                    <TableRow 
-                      key={entry.user_id}
-                      className="border-b border-white/5 hover:bg-white/[0.01] transition-colors"
-                    >
-                      <TableCell className="text-center font-bold text-xs text-neutral-400">
-                        #{entry.rank}
-                      </TableCell>
-                      <TableCell>
-                        <div className="flex items-center gap-3">
-                          <Avatar className="h-8 w-8 border border-white/5 shrink-0">
-                            <AvatarImage src={entry.profiles?.avatar_url || undefined} className="object-cover" />
-                            <AvatarFallback className="bg-neutral-800 text-xs text-neutral-400 font-semibold">
-                              {entry.profiles?.full_name?.substring(0, 2).toUpperCase()}
-                            </AvatarFallback>
-                          </Avatar>
-                          <div className="min-w-0">
-                            <span className="text-sm font-bold text-white block truncate leading-none mb-1">
-                              {entry.profiles?.full_name || 'Anonymous'}
-                            </span>
-                            <span className="text-[9px] text-neutral-500 font-bold uppercase tracking-wider capitalize">
-                              {entry.profiles?.role.replace('_', ' ')}
-                            </span>
-                          </div>
-                        </div>
-                      </TableCell>
-                      <TableCell className="text-center text-xs text-neutral-300 font-medium">
-                        {entry.event_count}
-                      </TableCell>
-                      <TableCell className="text-center text-xs text-neutral-300 font-medium">
-                        {entry.submission_count}
-                      </TableCell>
-                      <TableCell className="text-right font-black text-sm text-cyan-400 pr-6">
-                        {getPointsValue(entry)} <span className="text-[10px] text-neutral-500 font-semibold ml-0.5">PTS</span>
+                  {leaderboard.length === 0 ? (
+                    <TableRow>
+                      <TableCell colSpan={5} className="text-center py-8 text-neutral-500 text-xs">
+                        No leaderboard standings recorded yet.
                       </TableCell>
                     </TableRow>
-                  ))}
+                  ) : (
+                    leaderboard.map((entry) => (
+                      <TableRow 
+                        key={entry.user_id}
+                        className="border-b border-white/5 hover:bg-white/[0.01] transition-colors"
+                      >
+                        <TableCell className="text-center">
+                          {entry.rank === 1 ? (
+                            <span className="px-2 py-0.5 rounded-full text-[10px] font-extrabold bg-amber-500/20 text-amber-400 border border-amber-500/30">
+                              #1 👑
+                            </span>
+                          ) : entry.rank === 2 ? (
+                            <span className="px-2 py-0.5 rounded-full text-[10px] font-extrabold bg-slate-300/20 text-slate-200 border border-slate-300/30">
+                              #2
+                            </span>
+                          ) : entry.rank === 3 ? (
+                            <span className="px-2 py-0.5 rounded-full text-[10px] font-extrabold bg-amber-700/20 text-amber-500 border border-amber-700/30">
+                              #3
+                            </span>
+                          ) : (
+                            <span className="font-bold text-xs text-neutral-400">
+                              #{entry.rank}
+                            </span>
+                          )}
+                        </TableCell>
+                        <TableCell>
+                          <div className="flex items-center gap-3">
+                            <Avatar className="h-8 w-8 border border-white/5 shrink-0">
+                              <AvatarImage src={entry.profiles?.avatar_url || undefined} className="object-cover" />
+                              <AvatarFallback className="bg-neutral-800 text-xs text-neutral-400 font-semibold">
+                                {entry.profiles?.full_name?.substring(0, 2).toUpperCase()}
+                              </AvatarFallback>
+                            </Avatar>
+                            <div className="min-w-0">
+                              <span className="text-sm font-bold text-white block truncate leading-none mb-1">
+                                {entry.profiles?.full_name || 'Anonymous'}
+                              </span>
+                              <span className="text-[9px] text-neutral-500 font-bold uppercase tracking-wider capitalize">
+                                {entry.profiles?.roll_number ? `${entry.profiles.roll_number} • ` : ''}
+                                {entry.profiles?.role?.replace('_', ' ')}
+                              </span>
+                            </div>
+                          </div>
+                        </TableCell>
+                        <TableCell className="text-center text-xs text-neutral-300 font-medium">
+                          {entry.event_count}
+                        </TableCell>
+                        <TableCell className="text-center text-xs text-neutral-300 font-medium">
+                          {entry.submission_count}
+                        </TableCell>
+                        <TableCell className="text-right font-black text-sm text-cyan-400 pr-6">
+                          {getPointsValue(entry)} <span className="text-[10px] text-neutral-500 font-semibold ml-0.5">PTS</span>
+                        </TableCell>
+                      </TableRow>
+                    ))
+                  )}
                 </TableBody>
               </Table>
             </CardContent>

@@ -1,5 +1,6 @@
 import { createServerClient } from '@supabase/ssr'
 import { cookies } from 'next/headers'
+import { customFetch } from './fetch'
 
 export async function createClient() {
   const cookieStore = await cookies()
@@ -11,6 +12,9 @@ export async function createClient() {
     url,
     anonKey,
     {
+      global: {
+        fetch: customFetch,
+      },
       cookies: {
         getAll() {
           return cookieStore.getAll()

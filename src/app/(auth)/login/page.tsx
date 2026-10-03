@@ -97,17 +97,6 @@ export default function LoginPage() {
               </span>
             </div>
           </CardContent>
-
-          <CardFooter className="flex flex-col gap-3 pb-6 text-center border-t border-white/5 pt-4">
-            <span className="text-xs text-neutral-500">Need event coverage?</span>
-            <Link 
-              href="/apex-request" 
-              className="text-xs font-semibold text-cyan-400 hover:text-cyan-300 transition-colors flex items-center gap-1 group"
-            >
-              Submit APEX Coverage Request
-              <ArrowRight className="h-3.5 w-3.5 transition-transform group-hover:translate-x-0.5" />
-            </Link>
-          </CardFooter>
         </Card>
       </motion.div>
     </div>

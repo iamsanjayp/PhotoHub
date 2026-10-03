@@ -1,13 +1,16 @@
 'use server'
 
 import { createClient } from '@/lib/supabase/server'
+import { createAdminClient } from '@/lib/supabase/admin'
 import { getCurrentProfile } from './auth'
 import { revalidatePath } from 'next/cache'
 
+import { isAdminOrBoard } from '@/lib/constants/roles'
+
 async function assertAdminOrLeader() {
   const profile = await getCurrentProfile()
-  if (!profile || !['admin', 'leader'].includes(profile.role)) {
-    throw new Error('Unauthorized')
+  if (!profile || !isAdminOrBoard(profile.role)) {
+    throw new Error('Unauthorized. Admin or Board Member privileges required.')
   }
   return profile
 }
@@ -16,7 +19,7 @@ async function assertAdminOrLeader() {
 export async function shortlistPost(postId: string) {
   try {
     const admin = await assertAdminOrLeader()
-    const supabase = await createClient()
+    const supabase = await createAdminClient()
 
     // Check if post is approved
     const { data: post } = await supabase
@@ -59,7 +62,7 @@ export async function shortlistPost(postId: string) {
 export async function schedulePost(queueId: string, scheduledFor: string, draftCaption?: string | null) {
   try {
     await assertAdminOrLeader()
-    const supabase = await createClient()
+    const supabase = await createAdminClient()
 
     const { error } = await supabase
       .from('instagram_queue')
@@ -85,7 +88,7 @@ export async function schedulePost(queueId: string, scheduledFor: string, draftC
 export async function markAsPosted(queueId: string) {
   try {
     await assertAdminOrLeader()
-    const supabase = await createClient()
+    const supabase = await createAdminClient()
 
     const { error } = await supabase
       .from('instagram_queue')
@@ -110,7 +113,7 @@ export async function markAsPosted(queueId: string) {
 export async function archiveFromQueue(queueId: string) {
   try {
     await assertAdminOrLeader()
-    const supabase = await createClient()
+    const supabase = await createAdminClient()
 
     const { error } = await supabase
       .from('instagram_queue')
@@ -134,7 +137,7 @@ export async function archiveFromQueue(queueId: string) {
 export async function getQueueItems(status?: string) {
   try {
     await assertAdminOrLeader()
-    const supabase = await createClient()
+    const supabase = await createAdminClient()
 
     let query = supabase
       .from('instagram_queue')

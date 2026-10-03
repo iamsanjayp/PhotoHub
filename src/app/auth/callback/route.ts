@@ -1,5 +1,6 @@
 import { type NextRequest, NextResponse } from 'next/server'
 import { createServerClient } from '@supabase/ssr'
+import { customFetch } from '@/lib/supabase/fetch'
 
 export async function GET(request: NextRequest) {
   const { searchParams, origin } = new URL(request.url)
@@ -14,6 +15,9 @@ export async function GET(request: NextRequest) {
       url,
       anonKey,
       {
+        global: {
+          fetch: customFetch,
+        },
         cookies: {
           getAll() {
             return request.cookies.getAll()
@@ -29,8 +33,13 @@ export async function GET(request: NextRequest) {
 
     const { data, error } = await supabase.auth.exchangeCodeForSession(code)
     
-    if (!error && data?.user) {
-      const email = data.user.email ?? ''
+    if (error) {
+      console.error('Code exchange error during OAuth callback:', error)
+      return NextResponse.redirect(`${origin}/login?error=code_exchange_failed`)
+    }
+
+    if (data?.user) {
+      const email = (data.user.email ?? '').toLowerCase().trim()
       
       // Enforce domain restriction on login
       if (!email.endsWith('@bitsathy.ac.in')) {
@@ -39,6 +48,9 @@ export async function GET(request: NextRequest) {
           url,
           anonKey,
           {
+            global: {
+              fetch: customFetch,
+            },
             cookies: {
               getAll() {
                 return request.cookies.getAll()
@@ -59,6 +71,6 @@ export async function GET(request: NextRequest) {
     }
   }
 
-  // Redirect to unauthorized page if authentication fails
-  return NextResponse.redirect(`${origin}/unauthorized`)
+  // Redirect to login page if authentication fails
+  return NextResponse.redirect(`${origin}/login?error=auth_failed`)
 }

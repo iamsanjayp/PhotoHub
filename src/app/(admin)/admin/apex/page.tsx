@@ -23,6 +23,7 @@ import {
 } from 'lucide-react'
 import { toast } from 'sonner'
 import { cn } from '@/lib/utils'
+import { AddApexDialog } from '@/components/apex/add-apex-dialog'
 
 export default function AdminApexPage() {
   const [requests, setRequests] = useState<any[]>([])
@@ -133,15 +134,23 @@ export default function AdminApexPage() {
 
   return (
     <div className="space-y-8 pb-12">
-      {/* Title */}
-      <div className="space-y-1">
-        <h1 className="text-3xl font-extrabold tracking-tight text-white flex items-center gap-2">
-          <Send className="h-7 w-7 text-cyan-400" />
-          APEX Coverage Pipeline
-        </h1>
-        <p className="text-neutral-400 text-sm">
-          Moderate public photography coverage requests, assign club crews, track deliverables, and manage completions.
-        </p>
+      {/* Title & Actions */}
+      <div className="flex flex-col sm:flex-row justify-between sm:items-center gap-4">
+        <div className="space-y-1">
+          <h1 className="text-3xl font-extrabold tracking-tight text-white flex items-center gap-2">
+            <Send className="h-7 w-7 text-cyan-400" />
+            APEX Coverage Pipeline
+          </h1>
+          <p className="text-neutral-400 text-sm">
+            Moderate public photography coverage requests, assign club crews, track deliverables, and manage completions.
+          </p>
+        </div>
+        <AddApexDialog 
+          onSuccess={() => {
+            loadRequests()
+            setStatusTab('active')
+          }} 
+        />
       </div>
 
       {/* Tabs / Filter bar */}

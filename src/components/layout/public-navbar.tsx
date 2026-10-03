@@ -19,9 +19,6 @@ export default function PublicNavbar({ profile }: { profile: Profile | null }) {
  
       {/* Action buttons */}
       <div className="flex items-center gap-3 md:gap-4">
-        <Button asChild variant="outline" className="hidden md:inline-flex h-10 border-neutral-200 dark:border-white/10 hover:bg-neutral-100 dark:hover:bg-white/5 text-neutral-600 dark:text-neutral-300 font-semibold rounded-xl text-xs md:text-sm">
-          <Link href="/apex-request">Request Coverage (APEX)</Link>
-        </Button>
 
         {profile ? (
           <Button asChild className="h-10 bg-gradient-to-r from-cyan-500 to-teal-500 text-black hover:opacity-90 font-semibold rounded-xl gap-2 shadow-md shadow-cyan-500/10 text-xs md:text-sm">

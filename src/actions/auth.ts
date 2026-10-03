@@ -5,6 +5,7 @@ import { createAdminClient } from '@/lib/supabase/admin'
 import { redirect } from 'next/navigation'
 import { headers } from 'next/headers'
 import { revalidatePath } from 'next/cache'
+import type { UserRole } from '@/types/database'
 
 export async function signInWithGoogle() {
   const supabase = await createClient()
@@ -40,16 +41,52 @@ export async function signOut() {
 export async function getCurrentProfile() {
   try {
     const supabase = await createClient()
-    const { data: { user } } = await supabase.auth.getUser()
+    const { data: { user }, error: userError } = await supabase.auth.getUser()
+    console.log('getCurrentProfile -> getUser:', user?.email, user?.id, userError?.message)
     
     if (!user) return null
 
-    const { data: profile } = await supabase
+    let { data: profile, error: profileError } = await supabase
       .from('profiles')
       .select('*')
       .eq('id', user.id)
       .single()
 
+    if (!profile || profileError) {
+      console.log('getCurrentProfile -> fallback to admin client for profile check due to:', profileError?.message || 'null profile')
+      const adminClient = await createAdminClient()
+      const { data: adminProfile } = await adminClient
+        .from('profiles')
+        .select('*')
+        .eq('id', user.id)
+        .single()
+
+      if (adminProfile) {
+        profile = adminProfile
+      } else {
+        const email = user.email || ''
+        const fullName = user.user_metadata?.full_name || user.user_metadata?.name || email.split('@')[0]
+        const { data: newProfile, error: insertError } = await adminClient
+          .from('profiles')
+          .insert({
+            id: user.id,
+            email: email,
+            full_name: fullName,
+            role: email === 'photohub@bitsathy.ac.in' ? 'admin' : 'member',
+            is_active: true,
+            created_at: new Date().toISOString(),
+            updated_at: new Date().toISOString(),
+          })
+          .select('*')
+          .single()
+        if (insertError) {
+          console.error('getCurrentProfile -> adminClient insert error:', insertError)
+        }
+        profile = newProfile
+      }
+    }
+
+    console.log('getCurrentProfile -> resolved profile:', profile?.email, profile?.role, profile?.is_active)
     return profile
   } catch (error) {
     console.error('Error in getCurrentProfile:', error)
@@ -57,7 +94,7 @@ export async function getCurrentProfile() {
   }
 }
 
-export async function adminAssignRole(userId: string, role: 'admin' | 'leader' | 'camera_holder' | 'participant' | 'guest') {
+export async function adminAssignRole(userId: string, role: UserRole) {
   try {
     // Verify requester is admin
     const profile = await getCurrentProfile()

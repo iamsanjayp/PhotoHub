@@ -2,25 +2,28 @@
 
 import { useState, useTransition } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
-import { getMyAssignments, respondToAssignment, logApexAttendance, uploadApexMedia, deleteApexMedia } from '@/actions/apex'
+import { getMyAssignments, respondToAssignment, logApexAttendance, uploadApexMedia, deleteApexMedia, updateApexStatus } from '@/actions/apex'
 import { useAuth } from '@/providers/auth-provider'
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import { Skeleton } from '@/components/ui/skeleton'
-import { CldUploadWidget } from 'next-cloudinary'
+import { MediaUpload } from '@/components/ui/media-upload'
 import { format } from 'date-fns'
-import { ClipboardList, Clock, MapPin, CheckCircle, XCircle, ShieldAlert, Upload, Trash2, CheckSquare, Loader2, Play, Camera } from 'lucide-react'
+import { ClipboardList, Clock, MapPin, CheckCircle, XCircle, ShieldAlert, Upload, Trash2, CheckSquare, Loader2, Play, Camera, Users } from 'lucide-react'
 import { toast } from 'sonner'
 import { cn } from '@/lib/utils'
+import { canAccessCamera } from '@/lib/constants/roles'
+import { AddAssignmentDialog } from '@/components/apex/add-assignment-dialog'
 
 export default function MyAssignmentsPage() {
   const { profile } = useAuth()
   const queryClient = useQueryClient()
   const [isPending, startTransition] = useTransition()
 
-  // Guard role
-  const isAuthorized = profile && ['admin', 'leader', 'camera_holder'].includes(profile.role)
+  // Guard role: camera holders (board & committee members), admins, leaders
+  const isAuthorized = profile && (canAccessCamera(profile.role) || ['admin', 'leader', 'camera_holder'].includes(profile.role))
+  const isCameraHolder = profile && canAccessCamera(profile.role)
 
   const { data: result, isLoading } = useQuery({
     queryKey: ['my-assignments'],
@@ -67,6 +70,22 @@ export default function MyAssignmentsPage() {
     }
   })
 
+  // Complete shoot mutation
+  const completeApexMutation = useMutation({
+    mutationFn: async (requestId: string) => {
+      const res = await updateApexStatus(requestId, 'completed')
+      if (res.error) throw new Error(res.error)
+      return res
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['my-assignments'] })
+      toast.success('Shoot marked as completed and points awarded to crew!')
+    },
+    onError: (err: any) => {
+      toast.error(err.message || 'Failed to complete shoot')
+    }
+  })
+
   // Media upload handler
   const handleMediaUpload = async (requestId: string, url: string, mediaType: 'image' | 'video', publicId?: string) => {
     const result = await uploadApexMedia(requestId, url, mediaType, publicId)
@@ -107,14 +126,25 @@ export default function MyAssignmentsPage() {
 
   return (
     <div className="space-y-8 pb-12">
-      <div className="space-y-1">
-        <h1 className="text-3xl font-extrabold tracking-tight text-white flex items-center gap-2">
-          <ClipboardList className="h-7 w-7 text-cyan-400" />
-          My Assignments
-        </h1>
-        <p className="text-neutral-400 text-sm">
-          Accept bookings, log event attendance, and upload deliverables for your assigned event coverages.
-        </p>
+      {/* Header & Actions */}
+      <div className="flex flex-col sm:flex-row justify-between sm:items-center gap-4">
+        <div className="space-y-1">
+          <h1 className="text-3xl font-extrabold tracking-tight text-white flex items-center gap-2">
+            <ClipboardList className="h-7 w-7 text-cyan-400" />
+            My Assignments
+          </h1>
+          <p className="text-neutral-400 text-sm">
+            Accept bookings, log event attendance, and upload deliverables for your assigned event coverages.
+          </p>
+        </div>
+        {isCameraHolder && (
+          <AddAssignmentDialog
+            currentUser={profile}
+            onSuccess={() => {
+              queryClient.invalidateQueries({ queryKey: ['my-assignments'] })
+            }}
+          />
+        )}
       </div>
 
       {isLoading ? (
@@ -140,8 +170,9 @@ export default function MyAssignmentsPage() {
             const isAccepted = assignment.status === 'accepted'
             
             // Attendance helpers
-            const hasCheckedIn = req.status === 'ongoing' || req.status === 'completed' || req.status === 'delivered'
-            const hasCompleted = req.status === 'completed' || req.status === 'delivered'
+            const attendanceRecord = assignment.apex_attendance?.[0]
+            const hasCheckedIn = !!attendanceRecord?.checked_in_at || req.status === 'ongoing' || req.status === 'completed' || req.status === 'delivered'
+            const hasCompleted = !!attendanceRecord?.checked_out_at || req.status === 'completed' || req.status === 'delivered'
 
             return (
               <Card 
@@ -170,27 +201,51 @@ export default function MyAssignmentsPage() {
                     <h3 className="text-lg font-bold text-white mt-1">{req.event_name}</h3>
                   </div>
                   
-                  {isPendingResponse && (
-                    <div className="flex gap-2">
-                      <Button
-                        size="sm"
-                        onClick={() => respondMutation.mutate({ assignmentId: assignment.id, status: 'accepted' })}
-                        className="bg-green-500 text-black hover:bg-green-400 font-bold rounded-lg h-9 px-4 text-xs gap-1.5"
-                      >
-                        <CheckCircle className="h-4 w-4" />
-                        Accept
-                      </Button>
+                  <div className="flex items-center gap-2 flex-wrap">
+                    {['completed', 'delivered'].includes(req.status) ? (
+                      <Badge className="bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 text-[10px] font-bold px-2.5 py-1 rounded-full gap-1 flex items-center">
+                        <CheckCircle className="h-3 w-3" />
+                        Shoot Completed (+25 pts)
+                      </Badge>
+                    ) : isAccepted && (
                       <Button
                         size="sm"
                         variant="outline"
-                        onClick={() => respondMutation.mutate({ assignmentId: assignment.id, status: 'rejected' })}
-                        className="border-red-500/20 bg-red-500/5 text-red-400 hover:bg-red-500/10 hover:text-red-300 font-bold rounded-lg h-9 px-4 text-xs gap-1.5"
+                        disabled={completeApexMutation.isPending}
+                        onClick={() => {
+                          if (confirm(`Mark entire shoot "${req.event_name}" as complete and award points to all crew?`)) {
+                            completeApexMutation.mutate(req.id)
+                          }
+                        }}
+                        className="border-emerald-500/30 bg-emerald-500/10 text-emerald-400 hover:bg-emerald-500/20 hover:text-emerald-300 font-bold rounded-lg h-8 px-3 text-xs gap-1.5"
                       >
-                        <XCircle className="h-4 w-4" />
-                        Reject
+                        <CheckCircle className="h-3.5 w-3.5" />
+                        {completeApexMutation.isPending ? 'Completing...' : 'Mark Shoot Complete'}
                       </Button>
-                    </div>
-                  )}
+                    )}
+
+                    {isPendingResponse && (
+                      <div className="flex gap-2">
+                        <Button
+                          size="sm"
+                          onClick={() => respondMutation.mutate({ assignmentId: assignment.id, status: 'accepted' })}
+                          className="bg-green-500 text-black hover:bg-green-400 font-bold rounded-lg h-9 px-4 text-xs gap-1.5"
+                        >
+                          <CheckCircle className="h-4 w-4" />
+                          Accept
+                        </Button>
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          onClick={() => respondMutation.mutate({ assignmentId: assignment.id, status: 'rejected' })}
+                          className="border-red-500/20 bg-red-500/5 text-red-400 hover:bg-red-500/10 hover:text-red-300 font-bold rounded-lg h-9 px-4 text-xs gap-1.5"
+                        >
+                          <XCircle className="h-4 w-4" />
+                          Reject
+                        </Button>
+                      </div>
+                    )}
+                  </div>
                 </div>
 
                 {/* Details */}
@@ -224,6 +279,34 @@ export default function MyAssignmentsPage() {
                           </div>
                         </div>
                       )}
+
+                      {/* Fellow Crew Team */}
+                      {req.apex_assignments && req.apex_assignments.length > 1 && (
+                        <div className="border border-white/5 bg-white/[0.01] p-3 rounded-xl space-y-1.5 mt-3">
+                          <div className="flex items-center gap-1.5 text-neutral-300 font-bold text-xs">
+                            <Users className="h-3.5 w-3.5 text-cyan-400" />
+                            <span>Assigned Crew ({req.apex_assignments.length})</span>
+                          </div>
+                          <div className="flex flex-wrap gap-1.5 pt-1">
+                            {req.apex_assignments.map((other: any) => {
+                              const isMe = other.user_id === profile.id
+                              return (
+                                <span 
+                                  key={other.id}
+                                  className={cn(
+                                    "text-[10px] px-2 py-0.5 rounded-full border",
+                                    isMe 
+                                      ? "bg-cyan-500/10 border-cyan-500/30 text-cyan-300 font-bold"
+                                      : "bg-white/[0.03] border-white/10 text-neutral-300"
+                                  )}
+                                >
+                                  {other.profiles?.full_name || 'Teammate'} • <span className="capitalize">{other.role}</span>
+                                </span>
+                              )
+                            })}
+                          </div>
+                        </div>
+                      )}
                     </div>
 
                     {/* Right: Operational controls (Attendance / DELIVERABLES) */}
@@ -249,7 +332,11 @@ export default function MyAssignmentsPage() {
                           ) : !hasCompleted ? (
                             <Button
                               size="sm"
-                              onClick={() => attendanceMutation.mutate({ assignmentId: assignment.id, checkIn: req.created_at, checkOut: new Date().toISOString() })} // wait, use stored check_in or request
+                              onClick={() => attendanceMutation.mutate({ 
+                                assignmentId: assignment.id, 
+                                checkIn: attendanceRecord?.checked_in_at || req.event_date || new Date().toISOString(), 
+                                checkOut: new Date().toISOString() 
+                              })}
                               className="bg-yellow-500 text-black hover:bg-yellow-400 font-bold rounded-lg h-9 text-xs gap-1.5"
                             >
                               <CheckSquare className="h-3.5 w-3.5" />
@@ -258,7 +345,7 @@ export default function MyAssignmentsPage() {
                           ) : (
                             <div className="text-xs text-neutral-400 flex items-center gap-1.5 p-2.5 rounded-xl border border-green-500/10 bg-green-500/5 text-green-400">
                               <CheckCircle className="h-4 w-4 shrink-0" />
-                              <span>Attendance fully logged. Event coverage completed!</span>
+                              <span>Attendance fully logged. Event coverage completed! (+25 pts awarded)</span>
                             </div>
                           )}
                         </div>
@@ -270,8 +357,7 @@ export default function MyAssignmentsPage() {
                             Deliverables (Upload Photos/Videos)
                           </h4>
 
-                          <CldUploadWidget
-                            uploadPreset="photohub_unsigned"
+                          <MediaUpload
                             onSuccess={(res) => {
                               const info = res.info as any
                               handleMediaUpload(
@@ -281,23 +367,20 @@ export default function MyAssignmentsPage() {
                                 info.public_id
                               )
                             }}
-                            onClose={() => {
-                              document.body.style.overflow = '';
-                              document.body.style.pointerEvents = '';
-                            }}
                           >
-                            {({ open }) => (
+                            {({ open, isUploading }) => (
                               <Button
                                 type="button"
                                 onClick={() => open()}
+                                disabled={isUploading}
                                 variant="outline"
                                 className="h-9 border-white/10 hover:bg-white/5 text-xs font-bold rounded-lg gap-2 text-white"
                               >
                                 <Upload className="h-3.5 w-3.5 text-neutral-400" />
-                                Upload Deliverable
+                                {isUploading ? 'Uploading...' : 'Upload Deliverable'}
                               </Button>
                             )}
-                          </CldUploadWidget>
+                          </MediaUpload>
                         </div>
 
                       </div>

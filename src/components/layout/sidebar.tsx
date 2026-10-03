@@ -21,6 +21,9 @@ import {
   ChevronLeft,
   ChevronRight,
   LogOut,
+  Lightbulb,
+  Clapperboard,
+  CalendarDays,
 } from 'lucide-react'
 import { motion } from 'motion/react'
 
@@ -29,66 +32,88 @@ export default function Sidebar({ profile, isMobile = false }: { profile: Profil
   const collapsed = isMobile ? false : isCollapsed
   const pathname = usePathname()
 
+  const allRoles = ['admin', 'board_member', 'committee_member', 'member', 'leader', 'camera_holder', 'participant', 'guest']
+  const coreRoles = ['admin', 'board_member', 'committee_member', 'leader', 'camera_holder']
+  const adminBoardRoles = ['admin', 'board_member', 'leader']
+
   const navItems = [
     {
       label: 'Dashboard',
       href: '/dashboard',
       icon: LayoutDashboard,
-      roles: ['admin', 'leader', 'camera_holder', 'participant', 'guest'],
+      roles: allRoles,
     },
     {
       label: 'Feed',
       href: '/feed',
       icon: Image,
-      roles: ['admin', 'leader', 'camera_holder', 'participant', 'guest'],
+      roles: allRoles,
     },
     {
       label: 'Events',
       href: '/events',
       icon: Calendar,
-      roles: ['admin', 'leader', 'camera_holder', 'participant', 'guest'],
+      roles: allRoles,
     },
     {
       label: 'Challenges',
       href: '/challenges',
       icon: Trophy,
-      roles: ['admin', 'leader', 'camera_holder', 'participant', 'guest'],
+      roles: allRoles,
+    },
+    {
+      label: 'Shoot Ideas',
+      href: '/ideas',
+      icon: Lightbulb,
+      roles: allRoles,
+    },
+    {
+      label: 'PH Shoots',
+      href: '/shoots',
+      icon: Clapperboard,
+      roles: coreRoles,
+    },
+    {
+      label: 'Meetings',
+      href: '/meetings',
+      icon: CalendarDays,
+      roles: coreRoles,
     },
     {
       label: 'Leaderboard',
       href: '/leaderboard',
       icon: Award,
-      roles: ['admin', 'leader', 'camera_holder', 'participant', 'guest'],
+      roles: allRoles,
     },
     {
       label: 'Announcements',
       href: '/announcements',
       icon: Megaphone,
-      roles: ['admin', 'leader', 'camera_holder', 'participant', 'guest'],
+      roles: allRoles,
     },
     {
       label: 'My Assignments',
       href: '/my-assignments',
       icon: ClipboardList,
-      roles: ['admin', 'leader', 'camera_holder'],
+      roles: coreRoles,
     },
     {
       label: 'Notifications',
       href: '/notifications',
       icon: Bell,
-      roles: ['admin', 'leader', 'camera_holder', 'participant', 'guest'],
+      roles: allRoles,
     },
     {
       label: 'Profile',
       href: '/profile',
       icon: User,
-      roles: ['admin', 'leader', 'camera_holder', 'participant', 'guest'],
+      roles: allRoles,
     },
     {
       label: 'Admin Panel',
       href: '/admin',
       icon: Shield,
-      roles: ['admin', 'leader'],
+      roles: adminBoardRoles,
       highlight: true,
     },
   ]

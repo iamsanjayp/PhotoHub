@@ -91,8 +91,8 @@ export default function LandingPage() {
             className="flex flex-col sm:flex-row items-center justify-center gap-4 pt-4"
           >
             <Button asChild className="h-12 px-8 bg-gradient-to-r from-cyan-500 to-teal-500 text-black hover:opacity-90 font-bold rounded-xl gap-2 shadow-lg shadow-cyan-500/15 group">
-              <Link href="/apex-request">
-                Submit APEX Request
+              <Link href="/login">
+                Get Started
                 <ArrowRight className="h-4 w-4 transition-transform group-hover:translate-x-1" />
               </Link>
             </Button>

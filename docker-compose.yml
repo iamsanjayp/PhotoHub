@@ -1,0 +1,139 @@
+services:
+  # ==========================================
+  # 1. PostgreSQL Database Service
+  # ==========================================
+  db:
+    image: supabase/postgres:15.1.1.78
+    container_name: photohub-db
+    restart: unless-stopped
+    environment:
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-photohub_super_secret_pg_password_2026}
+      POSTGRES_DB: ${POSTGRES_DB:-postgres}
+      JWT_SECRET: ${JWT_SECRET:-super-secret-jwt-token-with-at-least-32-characters-long}
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      # Automatically initialize database with PhotoHub schema and seed data on first boot
+      - ./supabase/migrations:/docker-entrypoint-initdb.d:ro
+    networks:
+      - photohub-network
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d postgres"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # ==========================================
+  # 2. GoTrue (Authentication Service)
+  # ==========================================
+  auth:
+    image: supabase/gotrue:v2.132.3
+    container_name: photohub-auth
+    restart: unless-stopped
+    depends_on:
+      db:
+        condition: service_healthy
+    environment:
+      GOTRUE_API_HOST: 0.0.0.0
+      GOTRUE_API_PORT: 9999
+      API_EXTERNAL_URL: ${API_EXTERNAL_URL:-http://localhost:8000}
+      GOTRUE_DB_DRIVER: postgres
+      GOTRUE_DB_DATABASE_URL: postgres://postgres:${POSTGRES_PASSWORD_ENCODED:-We_the_photohub%4022}@db:5432/${POSTGRES_DB:-postgres}?sslmode=disable
+      GOTRUE_DB_NAMESPACE: auth
+      GOTRUE_SITE_URL: ${SITE_URL:-http://localhost:3000}
+      GOTRUE_URI_ALLOW_LIST: ${ADDITIONAL_REDIRECT_URLS:-http://localhost:3000/*}
+      GOTRUE_JWT_SECRET: ${JWT_SECRET:-super-secret-jwt-token-with-at-least-32-characters-long}
+      GOTRUE_JWT_EXP: 3600
+      GOTRUE_JWT_DEFAULT_GROUP_NAME: authenticated
+      GOTRUE_DISABLE_SIGNUP: ${DISABLE_SIGNUP:-false}
+      # Google OAuth setup
+      GOTRUE_EXTERNAL_GOOGLE_ENABLED: ${GOTRUE_EXTERNAL_GOOGLE_ENABLED:-true}
+      GOTRUE_EXTERNAL_GOOGLE_CLIENT_ID: ${GOTRUE_EXTERNAL_GOOGLE_CLIENT_ID:-}
+      GOTRUE_EXTERNAL_GOOGLE_SECRET: ${GOTRUE_EXTERNAL_GOOGLE_SECRET:-}
+      GOTRUE_EXTERNAL_GOOGLE_REDIRECT_URI: ${GOTRUE_EXTERNAL_GOOGLE_REDIRECT_URI:-http://localhost:8000/auth/v1/callback}
+    networks:
+      - photohub-network
+
+  # ==========================================
+  # 3. PostgREST (REST API Service)
+  # ==========================================
+  rest:
+    image: postgrest/postgrest:v11.2.0
+    container_name: photohub-rest
+    restart: unless-stopped
+    depends_on:
+      db:
+        condition: service_healthy
+    environment:
+      PGRST_DB_URI: postgres://postgres:${POSTGRES_PASSWORD_ENCODED:-We_the_photohub%4022}@db:5432/${POSTGRES_DB:-postgres}?sslmode=disable
+      PGRST_DB_SCHEMAS: public,storage,graphql_public
+      PGRST_DB_ANON_ROLE: anon
+      PGRST_JWT_SECRET: ${JWT_SECRET:-super-secret-jwt-token-with-at-least-32-characters-long}
+      PGRST_DB_USE_LEGACY_GUCS: "true"
+    networks:
+      - photohub-network
+
+  # ==========================================
+  # 4. Kong API Gateway (Unified Endpoint :8000)
+  # ==========================================
+  kong:
+    image: kong:2.8.1
+    container_name: photohub-kong
+    restart: unless-stopped
+    depends_on:
+      - auth
+      - rest
+    environment:
+      KONG_DATABASE: "off"
+      KONG_DECLARATIVE_CONFIG: /var/lib/kong/kong.yml
+      KONG_DNS_ORDER: LAST,A,CNAME
+      KONG_PLUGINS: request-transformer,cors,key-auth,acl,basic-auth
+      KONG_NGINX_PROXY_PROXY_BUFFER_SIZE: 160k
+      KONG_NGINX_PROXY_PROXY_BUFFERS: 64 160k
+    ports:
+      - "8000:8000"
+    volumes:
+      - ./docker/kong.yml:/var/lib/kong/kong.yml:ro
+    networks:
+      - photohub-network
+
+  # ==========================================
+  # 5. PhotoHub Next.js Frontend/Backend
+  # ==========================================
+  photohub-web:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      args:
+        NEXT_PUBLIC_SUPABASE_URL: ${NEXT_PUBLIC_SUPABASE_URL:-http://localhost:8000}
+        NEXT_PUBLIC_SUPABASE_ANON_KEY: ${ANON_KEY}
+    container_name: photohub-web
+    restart: unless-stopped
+    depends_on:
+      - kong
+    environment:
+      PORT: 3000
+      NODE_ENV: production
+      SUPABASE_INTERNAL_URL: http://kong:8000
+      NEXT_PUBLIC_SUPABASE_URL: ${NEXT_PUBLIC_SUPABASE_URL:-http://localhost:8000}
+      NEXT_PUBLIC_SUPABASE_ANON_KEY: ${ANON_KEY}
+      SUPABASE_SERVICE_ROLE_KEY: ${SERVICE_ROLE_KEY}
+      GOOGLE_SERVICE_ACCOUNT_EMAIL: ${GOOGLE_SERVICE_ACCOUNT_EMAIL}
+      GOOGLE_SERVICE_ACCOUNT_PRIVATE_KEY: ${GOOGLE_SERVICE_ACCOUNT_PRIVATE_KEY}
+      GOOGLE_DRIVE_FOLDER_ID: ${GOOGLE_DRIVE_FOLDER_ID}
+    ports:
+      - "80:3000"
+      - "3000:3000"
+    volumes:
+      # Persistent volume mount for user-uploaded photos and videos
+      - ./storage/uploads:/app/public/uploads
+    networks:
+      - photohub-network
+
+volumes:
+  postgres_data:
+
+networks:
+  photohub-network:
+    driver: bridge

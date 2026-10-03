@@ -19,7 +19,7 @@ import {
   ClipboardList
 } from 'lucide-react'
 import { format } from 'date-fns'
-import { cn } from '@/lib/utils'
+import { cn, getMediaUrl } from '@/lib/utils'
 
 export const metadata: Metadata = {
   title: 'Admin Overview | PhotoHub',
@@ -209,7 +209,7 @@ export default async function AdminPage() {
                     <div className="flex items-center gap-2.5 min-w-0">
                       <div className="h-8 w-8 rounded-lg overflow-hidden shrink-0 border border-white/5 bg-neutral-900">
                         {post.post_media?.[0]?.url && post.post_media[0].url.trim() !== '' ? (
-                          <img src={post.post_media[0].url} alt="thumbnail" className="h-full w-full object-cover" />
+                          <img src={getMediaUrl(post.post_media[0].url)} alt="thumbnail" className="h-full w-full object-cover" />
                         ) : (
                           <div className="h-full w-full flex items-center justify-center text-[10px] text-neutral-600 font-bold">PH</div>
                         )}

@@ -1,11 +1,12 @@
 'use client'
 
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { useAuth } from '@/providers/auth-provider'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { updateProfile } from '@/actions/members'
 import { getUserSubmissions } from '@/actions/submissions'
 import { getPointsLog } from '@/actions/leaderboard'
+import { getUserPosts } from '@/actions/posts'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -15,10 +16,11 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar'
 import { Badge } from '@/components/ui/badge'
 import { Skeleton } from '@/components/ui/skeleton'
+import PostDialog from '@/components/feed/post-dialog'
 import { toast } from 'sonner'
 import { Loader2, Award, Calendar, FileText, CheckCircle, Settings, User } from 'lucide-react'
 import { format } from 'date-fns'
-import { cn } from '@/lib/utils'
+import { cn, getMediaUrl } from '@/lib/utils'
 
 export default function ProfilePage() {
   const { profile, refreshProfile } = useAuth()
@@ -27,11 +29,25 @@ export default function ProfilePage() {
 
   // Form states
   const [fullName, setFullName] = useState(profile?.full_name || '')
+  const [rollNumber, setRollNumber] = useState(profile?.roll_number || '')
   const [phone, setPhone] = useState(profile?.phone || '')
   const [batch, setBatch] = useState(profile?.batch || '')
   const [department, setDepartment] = useState(profile?.department || '')
   const [bio, setBio] = useState(profile?.bio || '')
   const [skills, setSkills] = useState(profile?.skills?.join(', ') || '')
+
+  // Sync state if profile loads/updates
+  useEffect(() => {
+    if (profile) {
+      setFullName(profile.full_name || '')
+      setRollNumber(profile.roll_number || '')
+      setPhone(profile.phone || '')
+      setBatch(profile.batch || '')
+      setDepartment(profile.department || '')
+      setBio(profile.bio || '')
+      setSkills(profile.skills?.join(', ') || '')
+    }
+  }, [profile])
 
   // Queries
   const { data: submissionsResult, isLoading: loadingSubs } = useQuery({
@@ -56,8 +72,20 @@ export default function ProfilePage() {
     refetchOnWindowFocus: false,
   })
 
+  const { data: postsResult, isLoading: loadingPosts } = useQuery({
+    queryKey: ['my-posts'],
+    queryFn: async () => {
+      const res = await getUserPosts()
+      if (res.error) throw new Error(res.error)
+      return res.data || []
+    },
+    enabled: !!profile,
+    refetchOnWindowFocus: false,
+  })
+
   const submissions = submissionsResult || []
   const pointsLog = logsResult || []
+  const posts = postsResult || []
 
   // Update profile mutation
   const updateMutation = useMutation({
@@ -66,13 +94,19 @@ export default function ProfilePage() {
       if (res.error) throw new Error(res.error)
       return res.data
     },
-    onSuccess: async () => {
-      await refreshProfile()
+    onSuccess: (result) => {
       setIsEditing(false)
       toast.success('Profile updated successfully')
+      
+      if (result && result.data) {
+        refreshProfile(result.data).catch(console.error)
+      } else {
+        refreshProfile().catch(console.error)
+      }
     },
     onError: (err: any) => {
       toast.error(err.message || 'Failed to update profile')
+      setIsEditing(false)
     }
   })
 
@@ -85,6 +119,7 @@ export default function ProfilePage() {
 
     updateMutation.mutate({
       full_name: fullName || null,
+      roll_number: rollNumber || null,
       phone: phone || null,
       batch: batch || null,
       department: department || null,
@@ -142,6 +177,33 @@ export default function ProfilePage() {
                 </div>
               </div>
 
+              <div className="space-y-3 pt-3 border-t border-white/5 text-left max-w-[200px] mx-auto">
+                {profile.roll_number && (
+                  <div className="flex justify-between items-center text-xs">
+                    <span className="text-neutral-500">Roll No</span>
+                    <span className="text-cyan-400 font-mono font-medium">{profile.roll_number}</span>
+                  </div>
+                )}
+                {profile.batch && (
+                  <div className="flex justify-between items-center text-xs">
+                    <span className="text-neutral-500">Batch</span>
+                    <span className="text-neutral-300 font-medium">{profile.batch}</span>
+                  </div>
+                )}
+                {profile.department && (
+                  <div className="flex justify-between items-center text-xs">
+                    <span className="text-neutral-500">Dept</span>
+                    <span className="text-neutral-300 font-medium">{profile.department}</span>
+                  </div>
+                )}
+                {profile.phone && (
+                  <div className="flex justify-between items-center text-xs">
+                    <span className="text-neutral-500">Phone</span>
+                    <span className="text-neutral-300 font-medium">{profile.phone}</span>
+                  </div>
+                )}
+              </div>
+
               {profile.bio && (
                 <p className="text-xs text-neutral-400 italic max-w-xs mx-auto leading-relaxed border-t border-white/5 pt-3">
                   "{profile.bio}"
@@ -182,6 +244,19 @@ export default function ProfilePage() {
                       />
                     </div>
                     <div className="space-y-2">
+                      <Label htmlFor="roll_number" className="text-neutral-300 font-semibold text-xs">Roll Number / Student ID</Label>
+                      <Input
+                        id="roll_number"
+                        value={rollNumber}
+                        onChange={(e) => setRollNumber(e.target.value)}
+                        placeholder="e.g. 7376241CS101"
+                        className="border-white/5 bg-white/[0.02] text-white rounded-xl text-sm uppercase"
+                      />
+                    </div>
+                  </div>
+
+                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+                    <div className="space-y-2">
                       <Label htmlFor="phone" className="text-neutral-300 font-semibold text-xs">Phone Number</Label>
                       <Input
                         id="phone"
@@ -191,9 +266,6 @@ export default function ProfilePage() {
                         className="border-white/5 bg-white/[0.02] text-white rounded-xl text-sm"
                       />
                     </div>
-                  </div>
-
-                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                     <div className="space-y-2">
                       <Label htmlFor="batch" className="text-neutral-300 font-semibold text-xs">Batch Year</Label>
                       <Input
@@ -252,15 +324,60 @@ export default function ProfilePage() {
               </CardContent>
             </Card>
           ) : (
-            <Tabs defaultValue="submissions" className="w-full">
-              <TabsList className="bg-white/[0.02] border border-white/5 h-11 p-1 rounded-xl w-full sm:w-auto">
-                <TabsTrigger value="submissions" className="data-[state=active]:bg-cyan-500 data-[state=active]:text-black text-xs font-bold rounded-lg px-6 h-full flex-1 sm:flex-initial">
+            <Tabs defaultValue="posts" className="w-full">
+              <TabsList className="bg-white/[0.02] border border-white/5 h-11 p-1 rounded-xl w-full sm:w-auto overflow-x-auto justify-start hide-scrollbar">
+                <TabsTrigger value="posts" className="data-[state=active]:bg-cyan-500 data-[state=active]:text-black text-xs font-bold rounded-lg px-6 h-full flex-shrink-0">
+                  Posts ({posts.length})
+                </TabsTrigger>
+                <TabsTrigger value="submissions" className="data-[state=active]:bg-cyan-500 data-[state=active]:text-black text-xs font-bold rounded-lg px-6 h-full flex-shrink-0">
                   Submissions ({submissions.length})
                 </TabsTrigger>
-                <TabsTrigger value="points" className="data-[state=active]:bg-cyan-500 data-[state=active]:text-black text-xs font-bold rounded-lg px-6 h-full flex-1 sm:flex-initial">
-                  Points History ({pointsLog.length})
+                <TabsTrigger value="points" className="data-[state=active]:bg-cyan-500 data-[state=active]:text-black text-xs font-bold rounded-lg px-6 h-full flex-shrink-0">
+                  Points ({pointsLog.length})
                 </TabsTrigger>
               </TabsList>
+
+              {/* Posts tab content */}
+              <TabsContent value="posts" className="pt-4">
+                {loadingPosts ? (
+                  <div className="grid grid-cols-3 gap-2">
+                    {[...Array(6)].map((_, idx) => (
+                      <Skeleton key={idx} className="aspect-square bg-neutral-900 rounded-lg" />
+                    ))}
+                  </div>
+                ) : posts.length === 0 ? (
+                  <div className="border border-dashed border-white/5 rounded-2xl p-8 text-center text-neutral-500 bg-white/[0.005]">
+                    You haven't made any posts yet.
+                  </div>
+                ) : (
+                  <div className="grid grid-cols-3 gap-1 sm:gap-2">
+                    {posts.map((post: any) => {
+                      const firstMedia = post.post_media?.[0]
+                      return (
+                        <PostDialog key={post.id} post={post}>
+                          <div className="aspect-square relative group bg-neutral-900 rounded-lg overflow-hidden cursor-pointer block">
+                            {firstMedia && firstMedia.media_type === 'image' ? (
+                              <img src={getMediaUrl(firstMedia.url)} alt="Post" className="w-full h-full object-cover" />
+                            ) : firstMedia && firstMedia.media_type === 'video' ? (
+                              <video src={getMediaUrl(firstMedia.url)} className="w-full h-full object-cover" muted playsInline />
+                            ) : (
+                              <div className="w-full h-full flex items-center justify-center text-neutral-600 bg-neutral-800 text-xs">No media</div>
+                            )}
+                            <div className="absolute inset-0 bg-black/60 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center gap-4 text-white text-xs font-bold">
+                              <div className="flex items-center gap-1">
+                                <span className="text-cyan-400">♥</span> {post.like_count ?? (Array.isArray(post.likes) ? post.likes.length : 0)}
+                              </div>
+                              <div className="flex items-center gap-1">
+                                <span className="text-cyan-400">💬</span> {post.comment_count ?? (Array.isArray(post.comments) ? post.comments.length : 0)}
+                              </div>
+                            </div>
+                          </div>
+                        </PostDialog>
+                      )
+                    })}
+                  </div>
+                )}
+              </TabsContent>
 
               {/* Submissions tab content */}
               <TabsContent value="submissions" className="pt-4 space-y-4">

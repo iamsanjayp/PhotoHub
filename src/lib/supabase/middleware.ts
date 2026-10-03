@@ -1,5 +1,6 @@
 import { createServerClient } from '@supabase/ssr'
 import { NextResponse, type NextRequest } from 'next/server'
+import { customFetch } from './fetch'
 
 export async function updateSession(request: NextRequest) {
   let supabaseResponse = NextResponse.next({
@@ -13,6 +14,9 @@ export async function updateSession(request: NextRequest) {
     url,
     anonKey,
     {
+      global: {
+        fetch: customFetch,
+      },
       cookies: {
         getAll() {
           return request.cookies.getAll()

@@ -5,6 +5,8 @@
 -- Uses helper functions for role checks to keep policies DRY.
 -- ============================================================================
 
+SET search_path TO public, auth, extensions;
+
 -- ==========================================================================
 -- HELPER FUNCTIONS (SECURITY DEFINER)
 -- ==========================================================================
@@ -460,6 +462,32 @@ CREATE POLICY apex_attendance_update_admin ON public.apex_attendance
   FOR UPDATE TO authenticated
   USING (public.is_admin_or_leader())
   WITH CHECK (public.is_admin_or_leader());
+
+-- Assigned user can insert their own attendance check-in
+CREATE POLICY apex_attendance_insert_own ON public.apex_attendance
+  FOR INSERT TO authenticated
+  WITH CHECK (
+    EXISTS (
+      SELECT 1 FROM public.apex_assignments a
+      WHERE a.id = assignment_id AND a.user_id = auth.uid()
+    )
+  );
+
+-- Assigned user can update their own attendance (e.g. check-out, hours logged)
+CREATE POLICY apex_attendance_update_own ON public.apex_attendance
+  FOR UPDATE TO authenticated
+  USING (
+    EXISTS (
+      SELECT 1 FROM public.apex_assignments a
+      WHERE a.id = assignment_id AND a.user_id = auth.uid()
+    )
+  )
+  WITH CHECK (
+    EXISTS (
+      SELECT 1 FROM public.apex_assignments a
+      WHERE a.id = assignment_id AND a.user_id = auth.uid()
+    )
+  );
 
 
 -- ==========================================================================

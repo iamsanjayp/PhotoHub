@@ -3,15 +3,13 @@
 import { useEffect } from 'react'
 
 /**
- * Aggressive global scroll-lock fixer.
+ * Global scroll-lock fixer.
  * 
- * Cloudinary's upload widget sets overflow:hidden / pointer-events:none
- * on <body> when it opens its modal iframe, but often fails to remove
- * those styles when it closes — especially on mobile.
+ * Modals or overlays sometimes set overflow:hidden / pointer-events:none
+ * on <body> when opened, but may fail to remove those styles when closed.
  *
- * This component polls every 200ms and checks: if <body> is scroll-locked
- * but there is NO full-screen overlay iframe currently in the DOM, it
- * force-clears the lock. It also listens for DOM mutations for faster response.
+ * This component checks: if <body> is scroll-locked but there is NO active modal
+ * currently open in the DOM, it force-clears the lock.
  */
 export function ScrollLockFixer() {
   useEffect(() => {

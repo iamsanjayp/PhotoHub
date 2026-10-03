@@ -108,10 +108,9 @@ export default function AdminMembersPage() {
 
   const roles = [
     { value: 'admin', label: 'Admin' },
-    { value: 'leader', label: 'Leader' },
-    { value: 'camera_holder', label: 'Camera Holder' },
-    { value: 'participant', label: 'Participant' },
-    { value: 'guest', label: 'Guest' },
+    { value: 'board_member', label: 'Board Member' },
+    { value: 'committee_member', label: 'Committee Member' },
+    { value: 'member', label: 'Member' },
   ]
 
   return (

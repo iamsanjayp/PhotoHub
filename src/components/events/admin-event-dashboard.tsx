@@ -41,6 +41,7 @@ import {
 import { toast } from 'sonner'
 import { cn } from '@/lib/utils'
 import { motion } from 'motion/react'
+import { ExportResultsButton } from '@/components/common/export-results-button'
 
 interface AdminEventDashboardProps {
   event: any
@@ -246,12 +247,25 @@ export default function AdminEventDashboard({
               </div>
             </div>
           </div>
-          <Button asChild variant="outline" className="border-white/10 text-white hover:bg-white/5 rounded-xl h-10 px-4 flex items-center gap-2 shrink-0">
-            <Link href={`/admin/events/${event.id}/edit`}>
-              <Edit className="h-4 w-4" />
-              Edit Event
-            </Link>
-          </Button>
+          <div className="flex items-center gap-2.5 shrink-0 self-start sm:self-auto flex-wrap">
+            <ExportResultsButton
+              type="event"
+              id={event.id}
+              title={event.title}
+              event={event}
+              registrations={registrations}
+              submissions={submissions}
+              exportMode="all"
+              label="Overall Export"
+              className="border-white/10 text-white hover:bg-white/5 rounded-xl h-10 px-4"
+            />
+            <Button asChild variant="outline" className="border-white/10 text-white hover:bg-white/5 rounded-xl h-10 px-4 flex items-center gap-2">
+              <Link href={`/admin/events/${event.id}/edit`}>
+                <Edit className="h-4 w-4" />
+                Edit Event
+              </Link>
+            </Button>
+          </div>
         </div>
       </div>
 
@@ -383,6 +397,19 @@ export default function AdminEventDashboard({
                   <X className="h-4 w-4" />
                   Mark Absent
                 </Button>
+                <ExportResultsButton
+                  type="event"
+                  id={event.id}
+                  title={event.title}
+                  event={event}
+                  registrations={registrations}
+                  submissions={submissions}
+                  exportMode="attendance"
+                  size="sm"
+                  variant="outline"
+                  className="border-white/10 hover:bg-white/5 text-white text-xs font-bold rounded-lg px-3 py-1.5 h-8 flex items-center gap-1.5"
+                  label="Export Attendance Report"
+                />
               </div>
             </CardHeader>
             <CardContent className="p-0">
@@ -510,7 +537,22 @@ export default function AdminEventDashboard({
             <div className="grid grid-cols-1 xl:grid-cols-3 gap-6">
               {/* Left List */}
               <div className="xl:col-span-2 space-y-4">
-                <h3 className="text-md font-bold text-white px-1">Participant Entries ({submissions.length})</h3>
+                <div className="flex items-center justify-between px-1">
+                  <h3 className="text-md font-bold text-white">Participant Entries ({submissions.length})</h3>
+                  <ExportResultsButton
+                    type="event"
+                    id={event.id}
+                    title={event.title}
+                    event={event}
+                    registrations={registrations}
+                    submissions={submissions}
+                    exportMode="submissions"
+                    size="sm"
+                    variant="outline"
+                    className="border-white/10 hover:bg-white/5 text-white text-xs font-bold rounded-lg px-3 py-1.5 h-8 flex items-center gap-1.5"
+                    label="Export Submissions"
+                  />
+                </div>
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                   {submissions.map((sub) => (
                     <Card 
@@ -710,20 +752,35 @@ export default function AdminEventDashboard({
                 </CardDescription>
               </div>
 
-              <Button
-                onClick={handleSaveWinners}
-                disabled={isPending}
-                className="bg-gradient-to-r from-cyan-500 to-teal-500 text-black hover:opacity-90 font-bold rounded-xl h-10 px-5 flex items-center gap-1.5 shrink-0 self-start sm:self-auto"
-              >
-                {isPending ? (
-                  <Loader2 className="h-4 w-4 animate-spin" />
-                ) : (
-                  <>
-                    <Sparkles className="h-4 w-4" />
-                    Save Winners List
-                  </>
-                )}
-              </Button>
+              <div className="flex items-center gap-2.5 shrink-0 self-start sm:self-auto flex-wrap">
+                <ExportResultsButton
+                  type="event"
+                  id={event.id}
+                  title={event.title}
+                  event={event}
+                  registrations={registrations}
+                  submissions={submissions}
+                  exportMode="winners"
+                  label="Export Winners"
+                  size="sm"
+                  variant="outline"
+                  className="border-white/10 hover:bg-white/5 text-white text-xs font-bold rounded-xl h-10 px-4"
+                />
+                <Button
+                  onClick={handleSaveWinners}
+                  disabled={isPending}
+                  className="bg-gradient-to-r from-cyan-500 to-teal-500 text-black hover:opacity-90 font-bold rounded-xl h-10 px-5 flex items-center gap-1.5"
+                >
+                  {isPending ? (
+                    <Loader2 className="h-4 w-4 animate-spin" />
+                  ) : (
+                    <>
+                      <Sparkles className="h-4 w-4" />
+                      Save Winners List
+                    </>
+                  )}
+                </Button>
+              </div>
             </CardHeader>
             <CardContent className="p-0">
               {submissions.filter(s => s.status !== 'rejected').length === 0 ? (

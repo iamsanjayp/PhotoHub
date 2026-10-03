@@ -3,6 +3,7 @@
 import { createClient } from '@/lib/supabase/server'
 import { getCurrentProfile } from './auth'
 import { revalidatePath } from 'next/cache'
+import { isAdminOrBoard } from '@/lib/constants/roles'
 
 export async function createSubmission(input: {
   submittable_type: 'event' | 'challenge' | 'apex'
@@ -195,7 +196,7 @@ export async function getUserSubmissions(userId?: string) {
 export async function scoreSubmission(submissionId: string, score: number, feedback: string) {
   try {
     const admin = await getCurrentProfile()
-    if (!admin || !['admin', 'leader'].includes(admin.role)) {
+    if (!admin || !isAdminOrBoard(admin.role)) {
       throw new Error('Unauthorized')
     }
 
@@ -228,7 +229,7 @@ export async function scoreSubmission(submissionId: string, score: number, feedb
 export async function updateSubmissionStatus(submissionId: string, status: 'approved' | 'rejected') {
   try {
     const admin = await getCurrentProfile()
-    if (!admin || !['admin', 'leader'].includes(admin.role)) {
+    if (!admin || !isAdminOrBoard(admin.role)) {
       throw new Error('Unauthorized')
     }
 

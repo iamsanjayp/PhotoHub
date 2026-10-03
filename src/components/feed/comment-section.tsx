@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useTransition } from 'react'
+import { useState, useTransition, useEffect } from 'react'
 import { addComment, deleteComment } from '@/actions/posts'
 import { createClient } from '@/lib/supabase/client'
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar'
@@ -12,6 +12,9 @@ import { Send, Trash2, CornerDownRight, Loader2, MessageSquare } from 'lucide-re
 import { toast } from 'sonner'
 import { cn } from '@/lib/utils'
 
+import { useRouter } from 'next/navigation'
+import { useQueryClient } from '@tanstack/react-query'
+
 interface CommentSectionProps {
   postId: string
   initialComments: any[]
@@ -19,31 +22,32 @@ interface CommentSectionProps {
 
 export default function CommentSection({ postId, initialComments }: CommentSectionProps) {
   const { profile } = useAuth()
-  const [comments, setComments] = useState<any[]>(initialComments)
+  const router = useRouter()
+  const queryClient = useQueryClient()
+  const [comments, setComments] = useState<any[]>(initialComments || [])
   const [newComment, setNewComment] = useState('')
   const [replyToId, setReplyToId] = useState<string | null>(null)
   const [replyText, setReplyText] = useState('')
-  const [isPending, startTransition] = useTransition()
+  const [isSubmitting, setIsSubmitting] = useState(false)
   const supabase = createClient()
 
-  // Real-time synchronization
-  const fetchComments = async () => {
-    const { data } = await supabase
-      .from('comments')
-      .select('*, profiles(*)')
-      .eq('post_id', postId)
-      .is('deleted_at', null)
-      .order('created_at', { ascending: true })
-
-    if (data) setComments(data)
-  }
+  // Sync state with server-provided comments and sort them
+  useEffect(() => {
+    if (initialComments) {
+      const sorted = [...initialComments].sort((a, b) => 
+        new Date(a.created_at).getTime() - new Date(b.created_at).getTime()
+      )
+      setComments(sorted)
+    }
+  }, [initialComments])
 
   const handleAddComment = async (e: React.FormEvent, parentId?: string | null) => {
     e.preventDefault()
     const text = parentId ? replyText : newComment
-    if (!text.trim()) return
+    if (!text.trim() || isSubmitting) return
 
-    startTransition(async () => {
+    setIsSubmitting(true)
+    try {
       const result = await addComment(postId, text, parentId)
       if (result.error) {
         toast.error(result.error)
@@ -54,10 +58,14 @@ export default function CommentSection({ postId, initialComments }: CommentSecti
         } else {
           setNewComment('')
         }
-        await fetchComments()
+        queryClient.invalidateQueries({ queryKey: ['approved-posts'] })
+        queryClient.invalidateQueries({ queryKey: ['my-posts'] })
+        router.refresh()
         toast.success('Comment added')
       }
-    })
+    } finally {
+      setIsSubmitting(false)
+    }
   }
 
   const handleDeleteComment = async (id: string) => {
@@ -67,7 +75,9 @@ export default function CommentSection({ postId, initialComments }: CommentSecti
     if (result.error) {
       toast.error(result.error)
     } else {
-      await fetchComments()
+      queryClient.invalidateQueries({ queryKey: ['approved-posts'] })
+      queryClient.invalidateQueries({ queryKey: ['my-posts'] })
+      router.refresh()
       toast.success('Comment deleted')
     }
   }
@@ -102,10 +112,10 @@ export default function CommentSection({ postId, initialComments }: CommentSecti
         />
         <Button 
           type="submit" 
-          disabled={isPending || !newComment.trim()}
+          disabled={isSubmitting || !newComment.trim()}
           className="h-9 w-9 bg-cyan-500 hover:bg-cyan-400 text-black p-0 rounded-lg shrink-0"
         >
-          {isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />}
+          {isSubmitting ? <Loader2 className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />}
         </Button>
       </form>
 
@@ -216,10 +226,10 @@ export default function CommentSection({ postId, initialComments }: CommentSecti
                   />
                   <Button 
                     type="submit" 
-                    disabled={isPending || !replyText.trim()}
-                    className="h-8 w-8 bg-cyan-500 hover:bg-cyan-400 text-black p-0 rounded-lg shrink-0"
+                    disabled={isSubmitting || !replyText.trim()}
+                    className="h-7 w-7 bg-cyan-500 hover:bg-cyan-400 text-black p-0 rounded-md shrink-0"
                   >
-                    <Send className="h-3.5 w-3.5" />
+                    {isSubmitting ? <Loader2 className="h-3 w-3 animate-spin" /> : <Send className="h-3 w-3" />}
                   </Button>
                 </form>
               )}

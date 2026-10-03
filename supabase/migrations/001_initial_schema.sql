@@ -6,70 +6,73 @@
 -- where applicable.
 -- ============================================================================
 
+SET search_path TO public, auth, extensions;
+
 -- ==========================================================================
 -- ENUM TYPES
 -- ==========================================================================
 
-CREATE TYPE user_role AS ENUM (
-  'admin', 'leader', 'camera_holder', 'participant', 'guest'
+CREATE TYPE public.user_role AS ENUM (
+  'admin', 'board_member', 'committee_member', 'member',
+  'leader', 'camera_holder', 'participant', 'guest'
 );
 
-CREATE TYPE event_type AS ENUM (
+CREATE TYPE public.event_type AS ENUM (
   'workshop', 'competition', 'meetup', 'photowalk', 'exhibition', 'webinar', 'other'
 );
 
-CREATE TYPE event_visibility AS ENUM (
+CREATE TYPE public.event_visibility AS ENUM (
   'public', 'members_only', 'invite_only'
 );
 
-CREATE TYPE submission_mode AS ENUM (
+CREATE TYPE public.submission_mode AS ENUM (
   'image', 'text', 'link', 'drive_link'
 );
 
-CREATE TYPE submission_status AS ENUM (
+CREATE TYPE public.submission_status AS ENUM (
   'pending', 'approved', 'rejected', 'winner'
 );
 
-CREATE TYPE post_status AS ENUM (
+CREATE TYPE public.post_status AS ENUM (
   'pending', 'approved', 'rejected', 'featured'
 );
 
-CREATE TYPE apex_status AS ENUM (
+CREATE TYPE public.apex_status AS ENUM (
   'pending', 'approved', 'assigned', 'ongoing', 'completed', 'delivered', 'rejected'
 );
 
-CREATE TYPE apex_role AS ENUM (
+CREATE TYPE public.apex_role AS ENUM (
   'photographer', 'videographer', 'editor'
 );
 
-CREATE TYPE assignment_status AS ENUM (
+CREATE TYPE public.assignment_status AS ENUM (
   'pending', 'accepted', 'rejected'
 );
 
-CREATE TYPE equipment_status AS ENUM (
+CREATE TYPE public.equipment_status AS ENUM (
   'available', 'assigned', 'maintenance', 'retired'
 );
 
-CREATE TYPE equipment_type AS ENUM (
+CREATE TYPE public.equipment_type AS ENUM (
   'camera', 'lens', 'tripod', 'lighting', 'drone', 'other'
 );
 
-CREATE TYPE coverage_type AS ENUM (
+CREATE TYPE public.coverage_type AS ENUM (
   'photography', 'videography', 'both'
 );
 
-CREATE TYPE ig_queue_status AS ENUM (
+CREATE TYPE public.ig_queue_status AS ENUM (
   'pending', 'shortlisted', 'scheduled', 'posted', 'archived'
 );
 
-CREATE TYPE notification_type AS ENUM (
+CREATE TYPE public.notification_type AS ENUM (
   'info', 'success', 'warning', 'assignment', 'approval', 'rejection'
 );
 
-CREATE TYPE point_source AS ENUM (
+CREATE TYPE public.point_source AS ENUM (
   'event_attendance', 'submission_approved', 'challenge_win',
   'apex_completed', 'post_approved', 'post_featured',
-  'manual', 'consistency_bonus'
+  'manual', 'consistency_bonus', 'shoot_idea', 'shoot_completed'
 );
 
 
@@ -83,9 +86,10 @@ CREATE TABLE public.profiles (
   email       TEXT NOT NULL,
   full_name   TEXT,
   avatar_url  TEXT,
-  role        user_role DEFAULT 'participant',
+  role        user_role DEFAULT 'member',
   batch       TEXT,                  -- e.g., '2024', '2025'
   department  TEXT,
+  roll_number TEXT,
   skills      TEXT[],                -- e.g., ARRAY['portrait','landscape','editing']
   bio         TEXT,
   phone       TEXT,
@@ -121,6 +125,7 @@ CREATE TABLE public.events (
   submission_required   BOOLEAN DEFAULT false,
   submission_mode       submission_mode,
   created_by            UUID REFERENCES public.profiles(id),
+  external_link         TEXT,
   is_published          BOOLEAN DEFAULT true,
   deleted_at            TIMESTAMPTZ,
   created_at            TIMESTAMPTZ DEFAULT NOW(),
@@ -397,6 +402,7 @@ CREATE TABLE public.challenges (
   submission_mode          submission_mode DEFAULT 'image',
   max_submissions_per_user INTEGER DEFAULT 1,
   created_by               UUID REFERENCES public.profiles(id),
+  external_link            TEXT,
   is_active                BOOLEAN DEFAULT true,
   deleted_at               TIMESTAMPTZ,
   created_at               TIMESTAMPTZ DEFAULT NOW(),
@@ -680,3 +686,16 @@ CREATE INDEX IF NOT EXISTS idx_instagram_queue_status ON public.instagram_queue 
 CREATE INDEX IF NOT EXISTS idx_instagram_queue_managed_by ON public.instagram_queue (managed_by);
 CREATE INDEX IF NOT EXISTS idx_instagram_queue_scheduled_for ON public.instagram_queue (scheduled_for);
 CREATE INDEX IF NOT EXISTS idx_instagram_queue_created_at ON public.instagram_queue (created_at);
+
+-- ==========================================================================
+-- PERMISSIONS FOR SUPABASE API ROLES
+-- ==========================================================================
+GRANT ALL ON SCHEMA public TO anon, authenticated, service_role;
+GRANT ALL ON ALL TABLES IN SCHEMA public TO anon, authenticated, service_role;
+GRANT ALL ON ALL SEQUENCES IN SCHEMA public TO anon, authenticated, service_role;
+GRANT ALL ON ALL ROUTINES IN SCHEMA public TO anon, authenticated, service_role;
+
+ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT ALL ON TABLES TO anon, authenticated, service_role;
+ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT ALL ON SEQUENCES TO anon, authenticated, service_role;
+ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT ALL ON ROUTINES TO anon, authenticated, service_role;
+

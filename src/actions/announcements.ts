@@ -1,12 +1,13 @@
 'use server'
 
 import { createClient } from '@/lib/supabase/server'
+import { createAdminClient } from '@/lib/supabase/admin'
 import { getCurrentProfile } from './auth'
 import { revalidatePath } from 'next/cache'
 
 async function assertAdminOrLeader() {
   const profile = await getCurrentProfile()
-  if (!profile || !['admin', 'leader'].includes(profile.role)) {
+  if (!profile || !['admin', 'board_member', 'leader'].includes(profile.role)) {
     throw new Error('Unauthorized')
   }
   return profile
@@ -21,7 +22,7 @@ export async function createAnnouncement(input: {
 }) {
   try {
     const creator = await assertAdminOrLeader()
-    const supabase = await createClient()
+    const supabase = await createAdminClient()
 
     const { data, error } = await supabase
       .from('announcements')
@@ -53,10 +54,11 @@ export async function updateAnnouncement(announcementId: string, input: {
   content?: string
   is_pinned?: boolean
   expires_at?: string | null
+  external_link?: string | null
 }) {
   try {
     await assertAdminOrLeader()
-    const supabase = await createClient()
+    const supabase = await createAdminClient()
 
     const { data, error } = await supabase
       .from('announcements')
@@ -83,7 +85,7 @@ export async function updateAnnouncement(announcementId: string, input: {
 export async function deleteAnnouncement(announcementId: string) {
   try {
     await assertAdminOrLeader()
-    const supabase = await createClient()
+    const supabase = await createAdminClient()
 
     const { error } = await supabase
       .from('announcements')
@@ -108,7 +110,7 @@ export async function deleteAnnouncement(announcementId: string) {
 export async function pinAnnouncement(announcementId: string, isPinned: boolean) {
   try {
     await assertAdminOrLeader()
-    const supabase = await createClient()
+    const supabase = await createAdminClient()
 
     const { error } = await supabase
       .from('announcements')

@@ -1,8 +1,10 @@
 'use server'
 
 import { createClient } from '@/lib/supabase/server'
+import { createAdminClient } from '@/lib/supabase/admin'
 import { getCurrentProfile } from './auth'
 import { revalidatePath } from 'next/cache'
+import { isAdminOrBoard } from '@/lib/constants/roles'
 
 // Get leaderboard list joined with profiles
 export async function getLeaderboard(period: 'total' | 'monthly' | 'semester' = 'total') {
@@ -10,18 +12,21 @@ export async function getLeaderboard(period: 'total' | 'monthly' | 'semester' = 
     const profile = await getCurrentProfile()
     if (!profile) throw new Error('Unauthorized')
 
-    const supabase = await createClient()
-    
+    const adminClient = await createAdminClient()
+
+    // Refresh leaderboard cache to make sure latest point logs and activities are calculated
+    await adminClient.rpc('refresh_leaderboard')
+
     // Determine order field
     let orderField = 'total_points'
     if (period === 'monthly') orderField = 'monthly_points'
     if (period === 'semester') orderField = 'semester_points'
 
-    const { data, error } = await supabase
+    const { data, error } = await adminClient
       .from('leaderboard_cache')
       .select('*, profiles(*)')
       .order(orderField, { ascending: false })
-      .limit(50)
+      .limit(100)
 
     if (error) throw error
 
@@ -45,9 +50,9 @@ export async function getUserPoints(userId?: string) {
     if (!profile) throw new Error('Unauthorized')
 
     const targetUserId = userId || profile.id
-    const supabase = await createClient()
+    const adminClient = await createAdminClient()
 
-    const { data: cacheEntry, error } = await supabase
+    const { data: cacheEntry, error } = await adminClient
       .from('leaderboard_cache')
       .select('*')
       .eq('user_id', targetUserId)
@@ -64,7 +69,7 @@ export async function getUserPoints(userId?: string) {
         event_count: 0,
         submission_count: 0,
         rank: 9999,
-      }
+      },
     }
   } catch (error: any) {
     console.error('Error in getUserPoints:', error)
@@ -72,20 +77,30 @@ export async function getUserPoints(userId?: string) {
   }
 }
 
-// Get point logs for a user
+// Get point logs for a user or global activity for admins
 export async function getPointsLog(userId?: string) {
   try {
     const profile = await getCurrentProfile()
     if (!profile) throw new Error('Unauthorized')
 
-    const targetUserId = userId || profile.id
-    const supabase = await createClient()
+    const adminClient = await createAdminClient()
 
-    const { data, error } = await supabase
+    let query = adminClient
       .from('points_log')
-      .select('*, profiles!points_log_awarded_by_fkey(full_name)')
-      .eq('user_id', targetUserId)
+      .select(
+        '*, recipient:profiles!points_log_user_id_fkey(id, full_name, roll_number, avatar_url, role), awarder:profiles!points_log_awarded_by_fkey(id, full_name), profiles:profiles!points_log_awarded_by_fkey(full_name)'
+      )
       .order('created_at', { ascending: false })
+
+    if (userId) {
+      query = query.eq('user_id', userId)
+    } else if (!isAdminOrBoard(profile.role)) {
+      // Normal members only see their own point history
+      query = query.eq('user_id', profile.id)
+    }
+    // If admin or board member and no userId passed, returns all points activity across the club!
+
+    const { data, error } = await query.limit(100)
 
     if (error) throw error
 
@@ -100,13 +115,13 @@ export async function getPointsLog(userId?: string) {
 export async function awardManualPoints(userId: string, points: number, reason: string) {
   try {
     const admin = await getCurrentProfile()
-    if (!admin || !['admin', 'leader'].includes(admin.role)) {
+    if (!admin || !isAdminOrBoard(admin.role)) {
       throw new Error('Unauthorized')
     }
 
-    const supabase = await createClient()
+    const adminClient = await createAdminClient()
 
-    const { data, error } = await supabase
+    const { data, error } = await adminClient
       .from('points_log')
       .insert({
         user_id: userId,
@@ -121,8 +136,18 @@ export async function awardManualPoints(userId: string, points: number, reason: 
 
     if (error) throw error
 
-    // Refresh the leaderboard cache
-    await supabase.rpc('refresh_leaderboard')
+    // Notify user of points
+    await adminClient.from('notifications').insert({
+      user_id: userId,
+      title: points >= 0 ? 'Points Awarded! 🏆' : 'Points Deducted',
+      message: `${points >= 0 ? '+' : ''}${points} points: ${reason}`,
+      type: points >= 0 ? 'success' : 'warning',
+      source_type: 'manual_points',
+      source_id: data.id,
+    })
+
+    // Refresh the leaderboard cache immediately
+    await adminClient.rpc('refresh_leaderboard')
 
     revalidatePath('/leaderboard')
     revalidatePath('/admin/leaderboard')
@@ -138,11 +163,11 @@ export async function awardManualPoints(userId: string, points: number, reason: 
 export async function refreshLeaderboardCache() {
   try {
     const admin = await getCurrentProfile()
-    if (!admin || !['admin', 'leader'].includes(admin.role)) {
+    if (!admin || !isAdminOrBoard(admin.role)) {
       throw new Error('Unauthorized')
     }
-    const supabase = await createClient()
-    await supabase.rpc('refresh_leaderboard')
+    const adminClient = await createAdminClient()
+    await adminClient.rpc('refresh_leaderboard')
     revalidatePath('/leaderboard')
     revalidatePath('/admin/leaderboard')
     return { success: true }

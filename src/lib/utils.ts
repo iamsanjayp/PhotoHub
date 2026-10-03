@@ -42,20 +42,33 @@ export function getInitials(name: string | null): string {
     .slice(0, 2)
 }
 
+export function getMediaUrl(publicIdOrUrl: string | null | undefined, options?: {
+  width?: number
+  height?: number
+  quality?: string
+  format?: string
+}): string {
+  if (!publicIdOrUrl) return '/placeholder.png'
+
+  // Map any direct Google Drive CDN or share links to our reliable high-speed media route
+  const lh3Match = publicIdOrUrl.match(/lh3\.googleusercontent\.com\/d\/([a-zA-Z0-9_-]+)/)
+  const driveMatch = publicIdOrUrl.match(/drive\.google\.com\/.*[?&]id=([a-zA-Z0-9_-]+)/)
+  const fileId = lh3Match?.[1] || driveMatch?.[1]
+  if (fileId) {
+    return `/api/media/${fileId}`
+  }
+
+  if (publicIdOrUrl.startsWith('http://') || publicIdOrUrl.startsWith('https://') || publicIdOrUrl.startsWith('/')) {
+    return publicIdOrUrl
+  }
+  return `/uploads/${publicIdOrUrl}`
+}
+
 export function getCloudinaryUrl(publicId: string, options?: {
   width?: number
   height?: number
   quality?: string
   format?: string
 }): string {
-  const cloudName = process.env.NEXT_PUBLIC_CLOUDINARY_CLOUD_NAME
-  const transforms = []
-
-  if (options?.width) transforms.push(`w_${options.width}`)
-  if (options?.height) transforms.push(`h_${options.height}`)
-  transforms.push(`q_${options?.quality || 'auto'}`)
-  transforms.push(`f_${options?.format || 'webp'}`)
-
-  const transformStr = transforms.join(',')
-  return `https://res.cloudinary.com/${cloudName}/image/upload/${transformStr}/${publicId}`
+  return getMediaUrl(publicId, options)
 }

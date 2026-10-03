@@ -1,8 +1,10 @@
 'use server'
 
 import { createClient } from '@/lib/supabase/server'
+import { createAdminClient } from '@/lib/supabase/admin'
 import { getCurrentProfile } from './auth'
 import { revalidatePath } from 'next/cache'
+import { isAdminOrBoard } from '@/lib/constants/roles'
 
 // 1. MEMBER: Create Post
 export async function createPost(input: {
@@ -113,7 +115,7 @@ export async function deletePost(postId: string) {
 
     if (!post) throw new Error('Post not found')
 
-    if (post.user_id !== profile.id && !['admin', 'leader'].includes(profile.role)) {
+    if (post.user_id !== profile.id && !isAdminOrBoard(profile.role)) {
       throw new Error('Unauthorized')
     }
 
@@ -147,7 +149,7 @@ export async function getApprovedPosts() {
     // Fetch approved posts
     const { data: posts, error } = await supabase
       .from('posts')
-      .select('*, profiles:profiles!posts_user_id_fkey(*), post_media(*)')
+      .select('*, profiles:profiles!posts_user_id_fkey(*), post_media(*), comments(*, profiles(*))')
       .eq('status', 'approved')
       .is('deleted_at', null)
       .order('created_at', { ascending: false })
@@ -182,12 +184,12 @@ export async function getApprovedPosts() {
 export async function getPendingPosts() {
   try {
     const profile = await getCurrentProfile()
-    if (!profile || !['admin', 'leader'].includes(profile.role)) {
+    if (!profile || !isAdminOrBoard(profile.role)) {
       throw new Error('Unauthorized')
     }
 
-    const supabase = await createClient()
-    const { data, error } = await supabase
+    const adminClient = await createAdminClient()
+    const { data, error } = await adminClient
       .from('posts')
       .select('*, profiles:profiles!posts_user_id_fkey(*), post_media(*)')
       .eq('status', 'pending')
@@ -207,7 +209,7 @@ export async function getPendingPosts() {
 export async function approvePost(postId: string) {
   try {
     const admin = await getCurrentProfile()
-    if (!admin || !['admin', 'leader'].includes(admin.role)) {
+    if (!admin || !isAdminOrBoard(admin.role)) {
       throw new Error('Unauthorized')
     }
 
@@ -240,7 +242,7 @@ export async function approvePost(postId: string) {
 export async function rejectPost(postId: string, reason: string) {
   try {
     const admin = await getCurrentProfile()
-    if (!admin || !['admin', 'leader'].includes(admin.role)) {
+    if (!admin || !isAdminOrBoard(admin.role)) {
       throw new Error('Unauthorized')
     }
 
@@ -334,8 +336,6 @@ export async function addComment(postId: string, content: string, parentId?: str
 
     if (error) throw error
 
-    revalidatePath(`/feed/${postId}`)
-    revalidatePath('/feed')
     return { success: true, data }
   } catch (error: any) {
     console.error('Error in addComment:', error)
@@ -360,7 +360,7 @@ export async function deleteComment(commentId: string) {
 
     if (!comment) throw new Error('Comment not found')
 
-    if (comment.user_id !== profile.id && !['admin', 'leader'].includes(profile.role)) {
+    if (comment.user_id !== profile.id && !isAdminOrBoard(profile.role)) {
       throw new Error('Unauthorized')
     }
 
@@ -374,7 +374,6 @@ export async function deleteComment(commentId: string) {
 
     if (error) throw error
 
-    revalidatePath(`/feed/${comment.post_id}`)
     return { success: true }
   } catch (error: any) {
     console.error('Error in deleteComment:', error)
@@ -386,7 +385,7 @@ export async function deleteComment(commentId: string) {
 export async function featurePost(postId: string, isFeatured: boolean) {
   try {
     const admin = await getCurrentProfile()
-    if (!admin || !['admin', 'leader'].includes(admin.role)) {
+    if (!admin || !isAdminOrBoard(admin.role)) {
       throw new Error('Unauthorized')
     }
 
@@ -411,5 +410,37 @@ export async function featurePost(postId: string, isFeatured: boolean) {
   } catch (error: any) {
     console.error('Error in featurePost:', error)
     return { error: error.message || 'Failed to feature post' }
+  }
+}
+
+// 12. ANYONE: Fetch posts by a specific user (or current user)
+export async function getUserPosts(userId?: string) {
+  try {
+    const profile = await getCurrentProfile()
+    if (!profile) throw new Error('Unauthorized')
+
+    const targetUserId = userId || profile.id
+
+    const supabase = await createClient()
+
+    const { data, error } = await supabase
+      .from('posts')
+      .select(`
+        *,
+        post_media(*),
+        profiles!posts_user_id_fkey(id, full_name, avatar_url),
+        likes(user_id),
+        comments(*, profiles(*))
+      `)
+      .eq('user_id', targetUserId)
+      .is('deleted_at', null)
+      .order('created_at', { ascending: false })
+
+    if (error) throw error
+
+    return { data }
+  } catch (error: any) {
+    console.error('Error in getUserPosts:', error)
+    return { error: error.message || 'Failed to fetch user posts' }
   }
 }

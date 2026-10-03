@@ -7,7 +7,7 @@ import type { Profile } from '@/types/database'
 interface AuthContextType {
   profile: Profile | null
   loading: boolean
-  refreshProfile: () => Promise<void>
+  refreshProfile: (newProfile?: Profile) => Promise<void>
 }
 
 const AuthContext = createContext<AuthContextType>({
@@ -35,19 +35,28 @@ export function AuthProvider({
   const [loading, setLoading] = useState(!initialProfile)
   const supabase = createClient()
 
-  const refreshProfile = async () => {
+  const refreshProfile = async (newProfile?: Profile) => {
+    console.log('[refreshProfile] Starting...')
+    if (newProfile) {
+      console.log('[refreshProfile] Using provided profile')
+      setProfile(newProfile)
+      return
+    }
     const { data: { user } } = await supabase.auth.getUser()
     if (!user) {
+      console.log('[refreshProfile] No user found')
       setProfile(null)
       return
     }
 
+    console.log('[refreshProfile] Fetching profile for user', user.id)
     const { data } = await supabase
       .from('profiles')
       .select('*')
       .eq('id', user.id)
       .single()
 
+    console.log('[refreshProfile] Profile fetched:', data)
     setProfile(data)
   }
 

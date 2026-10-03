@@ -5,10 +5,12 @@ import { createAdminClient } from '@/lib/supabase/admin'
 import { getCurrentProfile } from './auth'
 import { revalidatePath } from 'next/cache'
 
+import { isAdminOrBoard } from '@/lib/constants/roles'
+
 async function assertAdminOrLeader() {
   const profile = await getCurrentProfile()
-  if (!profile || !['admin', 'leader'].includes(profile.role)) {
-    throw new Error('Unauthorized')
+  if (!profile || !isAdminOrBoard(profile.role)) {
+    throw new Error('Unauthorized. Admin or Board Member privileges required.')
   }
   return profile
 }
@@ -116,7 +118,7 @@ export async function getEquipment() {
     const profile = await getCurrentProfile()
     if (!profile) throw new Error('Unauthorized')
 
-    const supabase = await createClient()
+    const supabase = await createAdminClient()
     const { data, error } = await supabase
       .from('equipment')
       .select('*')

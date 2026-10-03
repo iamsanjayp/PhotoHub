@@ -7,7 +7,7 @@ import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Textarea } from '@/components/ui/textarea'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
-import { CldUploadWidget } from 'next-cloudinary'
+import { MediaUpload } from '@/components/ui/media-upload'
 import { Loader2, CheckCircle2, Image as ImageIcon, Link2, FileText, AlertTriangle } from 'lucide-react'
 import { toast } from 'sonner'
 import { cn } from '@/lib/utils'
@@ -187,26 +187,22 @@ export default function SubmissionForm({
                   </Button>
                 </div>
               ) : (
-                <CldUploadWidget
-                  uploadPreset="photohub_unsigned"
+                <MediaUpload
                   onSuccess={handleUploadSuccess}
-                  onClose={() => {
-                    document.body.style.overflow = '';
-                    document.body.style.pointerEvents = '';
-                  }}
                 >
-                  {({ open }) => (
+                  {({ open, isUploading }) => (
                     <button
                       type="button"
                       onClick={() => open()}
+                      disabled={isUploading}
                       className="w-full h-32 border-2 border-dashed border-white/5 bg-white/[0.01] hover:bg-white/[0.02] rounded-2xl flex flex-col items-center justify-center gap-2 text-neutral-400 hover:text-white transition-all select-none"
                     >
                       <ImageIcon className="h-8 w-8 text-neutral-600" />
-                      <span className="text-xs font-semibold">Click to upload your photograph</span>
-                      <span className="text-[10px] text-neutral-500">Max size: 10MB (JPEG, PNG)</span>
+                      <span className="text-xs font-semibold">{isUploading ? 'Uploading...' : 'Click to upload your photograph'}</span>
+                      <span className="text-[10px] text-neutral-500">Stored directly on local server</span>
                     </button>
                   )}
-                </CldUploadWidget>
+                </MediaUpload>
               )}
             </div>
           )}

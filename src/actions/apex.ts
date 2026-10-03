@@ -2,9 +2,16 @@
 
 import { createClient } from '@/lib/supabase/server'
 import { createAdminClient } from '@/lib/supabase/admin'
-import { createApexRequestSchema, type CreateApexRequestInput } from '@/lib/validators/apex'
+import { 
+  createApexRequestSchema, 
+  type CreateApexRequestInput,
+  createInternalApexSchema,
+  type CreateInternalApexInput 
+} from '@/lib/validators/apex'
 import { getCurrentProfile } from './auth'
 import { revalidatePath } from 'next/cache'
+import { isAdminOrBoard, canAccessCamera } from '@/lib/constants/roles'
+import { POINT_VALUES } from '@/lib/constants/points'
 
 // 1. PUBLIC: Create APEX request (uses admin client to bypass RLS since user is unauthenticated)
 export async function createApexRequest(input: CreateApexRequestInput) {
@@ -44,12 +51,12 @@ export async function createApexRequest(input: CreateApexRequestInput) {
 export async function getApexRequests(status?: string) {
   try {
     const profile = await getCurrentProfile()
-    if (!profile || !['admin', 'leader'].includes(profile.role)) {
+    if (!profile || !isAdminOrBoard(profile.role)) {
       throw new Error('Unauthorized')
     }
 
-    const supabase = await createClient()
-    let query = supabase
+    const adminClient = await createAdminClient()
+    let query = adminClient
       .from('apex_requests')
       .select('*')
       .order('event_date', { ascending: false })
@@ -65,7 +72,7 @@ export async function getApexRequests(status?: string) {
     // Fetch assignment counts
     const requestsWithCounts = await Promise.all(
       (data || []).map(async (req) => {
-        const { count } = await supabase
+        const { count } = await adminClient
           .from('apex_assignments')
           .select('*', { count: 'exact', head: true })
           .eq('request_id', req.id)
@@ -134,7 +141,7 @@ export async function getApexRequestById(requestId: string) {
 export async function approveApexRequest(requestId: string) {
   try {
     const profile = await getCurrentProfile()
-    if (!profile || !['admin', 'leader'].includes(profile.role)) {
+    if (!profile || !isAdminOrBoard(profile.role)) {
       throw new Error('Unauthorized')
     }
 
@@ -164,7 +171,7 @@ export async function approveApexRequest(requestId: string) {
 export async function rejectApexRequest(requestId: string, reason: string) {
   try {
     const profile = await getCurrentProfile()
-    if (!profile || !['admin', 'leader'].includes(profile.role)) {
+    if (!profile || !isAdminOrBoard(profile.role)) {
       throw new Error('Unauthorized')
     }
 
@@ -195,11 +202,32 @@ export async function rejectApexRequest(requestId: string, reason: string) {
 export async function assignTeamMember(requestId: string, userId: string, role: string, equipmentId?: string | null) {
   try {
     const profile = await getCurrentProfile()
-    if (!profile || !['admin', 'leader'].includes(profile.role)) {
+    if (!profile || !isAdminOrBoard(profile.role)) {
       throw new Error('Unauthorized')
     }
 
     const supabase = await createClient()
+
+    // If equipment is selected, verify camera access permissions
+    if (equipmentId) {
+      const { data: eq } = await supabase
+        .from('equipment')
+        .select('type, name')
+        .eq('id', equipmentId)
+        .single()
+
+      if (eq?.type === 'camera') {
+        const { data: assignee } = await supabase
+          .from('profiles')
+          .select('role')
+          .eq('id', userId)
+          .single()
+
+        if (!assignee || !canAccessCamera(assignee.role)) {
+          return { error: 'Camera equipment can only be assigned to Admin, Board Member, or Committee Member.' }
+        }
+      }
+    }
 
     // Insert assignment
     const { error: assignError } = await supabase
@@ -269,7 +297,7 @@ export async function assignTeamMember(requestId: string, userId: string, role: 
 export async function removeAssignment(assignmentId: string) {
   try {
     const profile = await getCurrentProfile()
-    if (!profile || !['admin', 'leader'].includes(profile.role)) {
+    if (!profile || !isAdminOrBoard(profile.role)) {
       throw new Error('Unauthorized')
     }
 
@@ -367,26 +395,131 @@ export async function logApexAttendance(assignmentId: string, checkedInAt: strin
     const profile = await getCurrentProfile()
     if (!profile) throw new Error('Unauthorized')
 
-    const supabase = await createClient()
+    const adminClient = await createAdminClient()
+
+    // Fetch existing attendance record if any
+    const { data: existing } = await adminClient
+      .from('apex_attendance')
+      .select('id, checked_in_at')
+      .eq('assignment_id', assignmentId)
+      .maybeSingle()
+
+    const effectiveCheckIn = existing?.checked_in_at || checkedInAt
 
     let hoursLogged = null
-    if (checkedOutAt) {
-      const diffMs = new Date(checkedOutAt).getTime() - new Date(checkedInAt).getTime()
-      hoursLogged = parseFloat((diffMs / (1000 * 60 * 60)).toFixed(2))
+    if (checkedOutAt && effectiveCheckIn) {
+      const diffMs = new Date(checkedOutAt).getTime() - new Date(effectiveCheckIn).getTime()
+      hoursLogged = parseFloat(Math.max(0, diffMs / (1000 * 60 * 60)).toFixed(2))
     }
 
-    const { error } = await supabase
-      .from('apex_attendance')
-      .upsert({
-        assignment_id: assignmentId,
-        checked_in_at: checkedInAt,
-        checked_out_at: checkedOutAt || null,
-        hours_logged: hoursLogged,
-      })
+    if (existing) {
+      const { error } = await adminClient
+        .from('apex_attendance')
+        .update({
+          checked_in_at: effectiveCheckIn,
+          checked_out_at: checkedOutAt || null,
+          hours_logged: hoursLogged,
+        })
+        .eq('id', existing.id)
 
-    if (error) throw error
+      if (error) throw error
+    } else {
+      const { error } = await adminClient
+        .from('apex_attendance')
+        .insert({
+          assignment_id: assignmentId,
+          checked_in_at: effectiveCheckIn,
+          checked_out_at: checkedOutAt || null,
+          hours_logged: hoursLogged,
+        })
+
+      if (error) throw error
+    }
+
+    // Transition request status to ongoing if checked in and currently approved/assigned
+    const { data: assignment } = await adminClient
+      .from('apex_assignments')
+      .select('request_id, user_id, role')
+      .eq('id', assignmentId)
+      .single()
+
+    if (assignment?.request_id) {
+      const { data: req } = await adminClient
+        .from('apex_requests')
+        .select('id, event_name, status')
+        .eq('id', assignment.request_id)
+        .single()
+
+      if (req && ['approved', 'assigned'].includes(req.status)) {
+        await adminClient
+          .from('apex_requests')
+          .update({ status: 'ongoing', updated_at: new Date().toISOString() })
+          .eq('id', assignment.request_id)
+      }
+
+      // If user is checking out, award them points if not already awarded
+      if (checkedOutAt) {
+        const { data: existingPoints } = await adminClient
+          .from('points_log')
+          .select('id')
+          .eq('user_id', assignment.user_id)
+          .eq('source_type', 'apex_completed')
+          .eq('source_id', assignment.request_id)
+          .maybeSingle()
+
+        if (!existingPoints) {
+          const pts = POINT_VALUES.apex_completed || 25
+          await adminClient.from('points_log').insert({
+            user_id: assignment.user_id,
+            points: pts,
+            reason: `APEX Event Coverage: "${req?.event_name || 'Shoot'}" (${assignment.role})`,
+            source_type: 'apex_completed',
+            source_id: assignment.request_id,
+            awarded_by: profile.id,
+            created_at: new Date().toISOString(),
+          })
+
+          await adminClient.from('notifications').insert({
+            user_id: assignment.user_id,
+            title: 'APEX Completed! 📸',
+            message: `Event coverage attendance logged for "${req?.event_name || 'Shoot'}"! You earned ${pts} points.`,
+            type: 'success',
+            source_type: 'apex',
+            source_id: assignment.request_id,
+          })
+
+          await adminClient.rpc('refresh_leaderboard')
+        }
+
+        // Check if all accepted crew members have checked out
+        const { data: allAssignments } = await adminClient
+          .from('apex_assignments')
+          .select(`
+            id,
+            status,
+            apex_attendance (
+              id,
+              checked_out_at
+            )
+          `)
+          .eq('request_id', assignment.request_id)
+          .eq('status', 'accepted')
+
+        const allCheckedOut = allAssignments && allAssignments.length > 0 && allAssignments.every(
+          (a: any) => a.apex_attendance?.some((att: any) => !!att.checked_out_at)
+        )
+
+        if (allCheckedOut && req && req.status !== 'completed' && req.status !== 'delivered') {
+          // Transition request to completed and release equipment / award any remaining crew points
+          await updateApexStatus(assignment.request_id, 'completed')
+        }
+      }
+    }
 
     revalidatePath('/my-assignments')
+    revalidatePath('/admin/apex')
+    revalidatePath('/leaderboard')
+    revalidatePath('/dashboard')
     return { success: true }
   } catch (error: any) {
     console.error('Error in logApexAttendance:', error)
@@ -439,7 +572,7 @@ export async function deleteApexMedia(mediaId: string) {
 
     if (!media) throw new Error('Media not found')
 
-    if (media.uploaded_by !== profile.id && !['admin', 'leader'].includes(profile.role)) {
+    if (media.uploaded_by !== profile.id && !isAdminOrBoard(profile.role)) {
       throw new Error('Unauthorized')
     }
 
@@ -459,16 +592,132 @@ export async function deleteApexMedia(mediaId: string) {
   }
 }
 
-// 12. ADMIN ONLY: Update APEX Status (ongoing, completed, delivered)
+// Helper: Award points for completed APEX assignment
+export async function awardPointsForApex(requestId: string, awardedById?: string) {
+  try {
+    const adminClient = await createAdminClient()
+
+    // 1. Fetch request details and assignments
+    const { data: req, error: reqErr } = await adminClient
+      .from('apex_requests')
+      .select(`
+        id, 
+        event_name, 
+        apex_assignments (
+          id, 
+          user_id, 
+          role, 
+          status
+        )
+      `)
+      .eq('id', requestId)
+      .single()
+
+    if (reqErr || !req) {
+      console.error('awardPointsForApex: request not found', reqErr)
+      return { error: 'Request not found' }
+    }
+
+    const assignments = req.apex_assignments || []
+    if (assignments.length === 0) {
+      return { success: true, count: 0 }
+    }
+
+    // 2. Fetch all existing apex_completed points for this request
+    const { data: existingLogs, error: logErr } = await adminClient
+      .from('points_log')
+      .select('user_id')
+      .eq('source_type', 'apex_completed')
+      .eq('source_id', requestId)
+
+    if (logErr) throw logErr
+
+    const alreadyAwardedUserIds = new Set((existingLogs || []).map((l: any) => l.user_id))
+
+    // 3. Filter members who haven't received points yet
+    const eligibleAssignments = assignments.filter((a: any) => 
+      a.status !== 'rejected' && !alreadyAwardedUserIds.has(a.user_id)
+    )
+
+    if (eligibleAssignments.length === 0) {
+      return { success: true, count: 0 }
+    }
+
+    const pointsPerMember = POINT_VALUES.apex_completed || 25
+
+    const pointLogs = eligibleAssignments.map((a: any) => ({
+      user_id: a.user_id,
+      points: pointsPerMember,
+      reason: `APEX Event Coverage: "${req.event_name}" (${a.role})`,
+      source_type: 'apex_completed',
+      source_id: requestId,
+      awarded_by: awardedById || null,
+      created_at: new Date().toISOString(),
+    }))
+
+    const { error: insertErr } = await adminClient.from('points_log').insert(pointLogs)
+    if (insertErr) throw insertErr
+
+    // 4. Send in-app notification to each crew member
+    const notifications = eligibleAssignments.map((a: any) => ({
+      user_id: a.user_id,
+      title: 'APEX Shoot Completed! 🏆',
+      message: `Event coverage "${req.event_name}" has been completed! You earned ${pointsPerMember} points for your work as ${a.role}.`,
+      type: 'success' as const,
+      source_type: 'apex',
+      source_id: requestId,
+    }))
+
+    await adminClient.from('notifications').insert(notifications)
+
+    // 5. Refresh leaderboard
+    await adminClient.rpc('refresh_leaderboard')
+
+    revalidatePath('/leaderboard')
+    revalidatePath('/dashboard')
+    revalidatePath('/my-assignments')
+    revalidatePath(`/admin/apex/${requestId}`)
+    revalidatePath('/admin/apex')
+
+    return { success: true, count: eligibleAssignments.length }
+  } catch (error: any) {
+    console.error('Error in awardPointsForApex:', error)
+    return { error: error.message || 'Failed to award points' }
+  }
+}
+
+// 12. Update APEX Status (ongoing, completed, delivered)
 export async function updateApexStatus(requestId: string, status: 'ongoing' | 'completed' | 'delivered') {
   try {
     const profile = await getCurrentProfile()
-    if (!profile || !['admin', 'leader'].includes(profile.role)) {
-      throw new Error('Unauthorized')
+    if (!profile) throw new Error('Unauthorized')
+
+    const adminClient = await createAdminClient()
+
+    // Permission check: Admin/Board, OR assigned camera holder/creator
+    const isLeadership = isAdminOrBoard(profile.role)
+    if (!isLeadership) {
+      const { data: assignment } = await adminClient
+        .from('apex_assignments')
+        .select('id')
+        .eq('request_id', requestId)
+        .eq('user_id', profile.id)
+        .maybeSingle()
+
+      const { data: request } = await adminClient
+        .from('apex_requests')
+        .select('reviewed_by')
+        .eq('id', requestId)
+        .maybeSingle()
+
+      const isAssignedCrew = !!assignment && canAccessCamera(profile.role)
+      const isCreator = request?.reviewed_by === profile.id
+
+      if (!isAssignedCrew && !isCreator) {
+        throw new Error('Unauthorized. You do not have permission to update this shoot status.')
+      }
     }
 
-    const supabase = await createClient()
-    
     const updateData: any = {
       status,
       updated_at: new Date().toISOString(),
@@ -480,16 +729,16 @@ export async function updateApexStatus(requestId: string, status: 'ongoing' | 'c
       updateData.delivered_at = new Date().toISOString()
     }
 
-    const { error } = await supabase
+    const { error } = await adminClient
       .from('apex_requests')
       .update(updateData)
       .eq('id', requestId)
 
     if (error) throw error
 
-    // If completed/delivered, also release any equipment assigned to this request
+    // If completed/delivered, also release any equipment assigned to this request and award points
     if (['completed', 'delivered'].includes(status)) {
-      const { data: assignments } = await supabase
+      const { data: assignments } = await adminClient
         .from('apex_assignments')
         .select('equipment_id')
         .eq('request_id', requestId)
@@ -498,23 +747,29 @@ export async function updateApexStatus(requestId: string, status: 'ongoing' | 'c
         const eqIds = assignments.map(a => a.equipment_id).filter(Boolean)
         if (eqIds.length > 0) {
           // Free equipment
-          await supabase
+          await adminClient
             .from('equipment')
             .update({ status: 'available' })
             .in('id', eqIds)
 
           // Mark return in checkout log
-          await supabase
+          await adminClient
             .from('equipment_assignments')
             .update({ returned_at: new Date().toISOString() })
             .eq('apex_request_id', requestId)
             .is('returned_at', null)
         }
       }
+
+      // AWARD POINTS to crew members
+      await awardPointsForApex(requestId, profile.id)
     }
 
     revalidatePath(`/admin/apex/${requestId}`)
     revalidatePath('/admin/apex')
+    revalidatePath('/my-assignments')
+    revalidatePath('/dashboard')
+    revalidatePath('/leaderboard')
     return { success: true }
   } catch (error: any) {
     console.error('Error in updateApexStatus:', error)
@@ -528,10 +783,26 @@ export async function getMyAssignments() {
     const profile = await getCurrentProfile()
     if (!profile) throw new Error('Unauthorized')
 
-    const supabase = await createClient()
-    const { data, error } = await supabase
+    const adminClient = await createAdminClient()
+    const { data, error } = await adminClient
       .from('apex_assignments')
-      .select('*, apex_requests(*), equipment(*)')
+      .select(`
+        *,
+        apex_requests (
+          *,
+          apex_media (*),
+          apex_assignments (
+            id,
+            user_id,
+            role,
+            status,
+            equipment (id, name, model, serial_number),
+            profiles (id, full_name, avatar_url, role)
+          )
+        ),
+        equipment (*),
+        apex_attendance (*)
+      `)
       .eq('user_id', profile.id)
       .order('created_at', { ascending: false })
 
@@ -543,3 +814,125 @@ export async function getMyAssignments() {
     return { error: error.message || 'Failed to fetch assignments' }
   }
 }
+
+// 14. INTERNAL: Create Internal APEX coverage or unannounced shoot
+export async function createInternalApex(input: CreateInternalApexInput) {
+  try {
+    const profile = await getCurrentProfile()
+    if (!profile) {
+      throw new Error('Unauthorized. Please sign in.')
+    }
+
+    if (!canAccessCamera(profile.role)) {
+      throw new Error('Unauthorized. Access is restricted to Camera Holders (Board Members, Committee Members) and Admins.')
+    }
+
+    const validated = createInternalApexSchema.parse(input)
+    const adminClient = await createAdminClient()
+
+    const hasCrew = validated.crew && validated.crew.length > 0
+    const initialStatus = validated.initial_status || (hasCrew ? 'assigned' : 'approved')
+
+    // Create apex request
+    const { data: request, error: reqError } = await adminClient
+      .from('apex_requests')
+      .insert({
+        event_name: validated.event_name.trim(),
+        organizer_name: validated.organizer_name?.trim() || profile.full_name || 'Club Internal',
+        department: validated.department?.trim() || profile.department || 'Photography Club',
+        contact_email: validated.contact_email?.trim() || profile.email,
+        contact_phone: validated.contact_phone?.trim() || profile.phone || null,
+        venue: validated.venue?.trim() || null,
+        event_date: validated.event_date,
+        event_time: validated.event_time || null,
+        end_time: validated.end_time || null,
+        coverage_type: validated.coverage_type,
+        notes: validated.notes?.trim() || null,
+        status: initialStatus,
+        reviewed_by: profile.id,
+        reviewed_at: new Date().toISOString(),
+      })
+      .select()
+      .single()
+
+    if (reqError) throw reqError
+
+    // Handle crew assignments and equipment checkouts
+    if (hasCrew) {
+      const assignedUserIds = new Set<string>()
+
+      for (const crewMember of validated.crew) {
+        if (!crewMember.user_id || assignedUserIds.has(crewMember.user_id)) {
+          continue
+        }
+        assignedUserIds.add(crewMember.user_id)
+
+        const cleanEquipmentId = (crewMember.equipment_id && crewMember.equipment_id !== 'none' && crewMember.equipment_id.trim() !== '') ? crewMember.equipment_id : null
+
+        // If equipment is selected, verify camera access permissions
+        if (cleanEquipmentId) {
+          const { data: eq } = await adminClient
+            .from('equipment')
+            .select('type, name')
+            .eq('id', cleanEquipmentId)
+            .single()
+
+          if (eq?.type === 'camera') {
+            const { data: assignee } = await adminClient
+              .from('profiles')
+              .select('role')
+              .eq('id', crewMember.user_id)
+              .single()
+
+            if (!assignee || !canAccessCamera(assignee.role)) {
+              throw new Error(`Camera equipment (${eq.name}) can only be assigned to Camera Holders (Admin, Board, Committee Member).`)
+            }
+          }
+        }
+
+        const assignStatus = crewMember.status || (crewMember.user_id === profile.id ? 'accepted' : 'pending')
+
+        const { error: assignError } = await adminClient
+          .from('apex_assignments')
+          .insert({
+            request_id: request.id,
+            user_id: crewMember.user_id,
+            role: crewMember.role,
+            equipment_id: cleanEquipmentId,
+            status: assignStatus,
+          })
+
+        if (assignError) throw assignError
+
+        // If equipment is selected, checkout
+        if (cleanEquipmentId) {
+          await adminClient
+            .from('equipment')
+            .update({ status: 'assigned' })
+            .eq('id', cleanEquipmentId)
+
+          await adminClient
+            .from('equipment_assignments')
+            .insert({
+              equipment_id: cleanEquipmentId,
+              assigned_to: crewMember.user_id,
+              assigned_by: profile.id,
+              apex_request_id: request.id,
+              checked_out_at: new Date().toISOString(),
+            })
+        }
+      }
+    }
+
+    revalidatePath('/admin/apex')
+    revalidatePath(`/admin/apex/${request.id}`)
+    revalidatePath('/my-assignments')
+    revalidatePath('/dashboard')
+
+    return { success: true, data: request }
+  } catch (error: any) {
+    console.error('Error in createInternalApex:', error)
+    return { error: error.message || 'Failed to create internal APEX coverage' }
+  }
+}
+

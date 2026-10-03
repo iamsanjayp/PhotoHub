@@ -1,8 +1,10 @@
 import type { Metadata } from 'next'
 import { getEventById } from '@/actions/events'
 import { getMySubmission } from '@/actions/submissions'
+import { getCurrentProfile } from '@/actions/auth'
 import RegistrationButton from '@/components/events/registration-button'
 import SubmissionForm from '@/components/events/submission-form'
+import { ExportResultsButton } from '@/components/common/export-results-button'
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
@@ -28,7 +30,10 @@ export async function generateMetadata({ params }: PageProps): Promise<Metadata>
 
 export default async function EventDetailPage({ params }: PageProps) {
   const { eventId } = await params
-  const result = await getEventById(eventId)
+  const [result, profile] = await Promise.all([
+    getEventById(eventId),
+    getCurrentProfile()
+  ])
 
   if (result.error || !result.data) {
     notFound()
@@ -36,6 +41,7 @@ export default async function EventDetailPage({ params }: PageProps) {
 
   const event = result.data
   const isPast = new Date(event.end_date) < new Date()
+  const isAdminOrLeader = profile && ['admin', 'leader'].includes(profile.role)
 
   // Fetch the user's submission if registered
   let existingSubmission = null
@@ -56,14 +62,36 @@ export default async function EventDetailPage({ params }: PageProps) {
 
   return (
     <div className="space-y-6 pb-12">
-      {/* Back Button */}
-      <Link
-        href="/events"
-        className="inline-flex items-center gap-2 text-xs font-semibold text-neutral-400 hover:text-white transition-colors"
-      >
-        <ArrowLeft className="h-3.5 w-3.5" />
-        Back to Events
-      </Link>
+      {/* Top Bar: Back Button & Admin Actions */}
+      <div className="flex items-center justify-between gap-4 flex-wrap">
+        <Link
+          href="/events"
+          className="inline-flex items-center gap-2 text-xs font-semibold text-neutral-400 hover:text-white transition-colors"
+        >
+          <ArrowLeft className="h-3.5 w-3.5" />
+          Back to Events
+        </Link>
+
+        {isAdminOrLeader && (
+          <div className="flex items-center gap-2">
+            <ExportResultsButton
+              type="event"
+              id={event.id}
+              title={event.title}
+              exportMode="all"
+              label="Export Results"
+              size="sm"
+              variant="outline"
+              className="border-white/10 text-white hover:bg-white/5 rounded-xl h-8 px-3 text-xs"
+            />
+            <Button asChild size="sm" variant="ghost" className="h-8 text-neutral-400 hover:text-white hover:bg-white/5 rounded-xl text-xs gap-1">
+              <Link href={`/admin/events/${event.id}`}>
+                Admin Dashboard
+              </Link>
+            </Button>
+          </div>
+        )}
+      </div>
 
       {/* Event Info Header */}
       <div className="space-y-3">

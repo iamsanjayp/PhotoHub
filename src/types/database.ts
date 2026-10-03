@@ -2,7 +2,7 @@
 // Database Types for PhotoHub
 // ============================================================
 
-export type UserRole = 'admin' | 'leader' | 'camera_holder' | 'participant' | 'guest'
+export type UserRole = 'admin' | 'board_member' | 'committee_member' | 'member'
 
 export type EventType = 'workshop' | 'competition' | 'meetup' | 'photowalk' | 'exhibition' | 'webinar' | 'other'
 
@@ -30,7 +30,7 @@ export type IgQueueStatus = 'pending' | 'shortlisted' | 'scheduled' | 'posted' |
 
 export type NotificationType = 'info' | 'success' | 'warning' | 'assignment' | 'approval' | 'rejection'
 
-export type PointSource = 'event_attendance' | 'submission_approved' | 'challenge_win' | 'apex_completed' | 'post_approved' | 'post_featured' | 'manual' | 'consistency_bonus'
+export type PointSource = 'event_attendance' | 'submission_approved' | 'challenge_win' | 'apex_completed' | 'post_approved' | 'post_featured' | 'manual' | 'consistency_bonus' | 'shoot_idea' | 'shoot_completed'
 
 // ============================================================
 // Table Types
@@ -47,6 +47,7 @@ export interface Profile {
   skills: string[] | null
   bio: string | null
   phone: string | null
+  roll_number: string | null
   is_active: boolean
   deactivated_at: string | null
   created_at: string
@@ -130,6 +131,7 @@ export interface Post {
   profiles?: Profile
   post_media?: PostMedia[]
   user_has_liked?: boolean
+  comments?: Comment[]
 }
 
 export interface PostMedia {
@@ -312,6 +314,7 @@ export interface Announcement {
   is_pinned: boolean
   priority: number
   expires_at: string | null
+  external_link: string | null
   created_by: string | null
   deleted_at: string | null
   created_at: string
@@ -348,3 +351,99 @@ export interface InstagramQueueItem {
   posts?: Post & { post_media?: PostMedia[] }
   profiles?: Profile
 }
+
+export interface EventInvite {
+  id: string
+  event_id: string
+  user_id: string
+  invited_by: string | null
+  created_at: string
+  profiles?: Profile
+}
+
+export interface Meeting {
+  id: string
+  title: string
+  description: string | null
+  scheduled_at: string
+  venue: string | null
+  is_invite_only: boolean
+  minutes_of_meeting: string | null
+  summary: string | null
+  status: 'scheduled' | 'ongoing' | 'completed' | 'cancelled'
+  created_by: string | null
+  created_at: string
+  updated_at: string
+  profiles?: Profile
+  attendance?: MeetingAttendance[]
+  invites?: MeetingInvite[]
+}
+
+export interface MeetingAttendance {
+  id: string
+  meeting_id: string
+  user_id: string
+  attended: boolean
+  notes: string | null
+  marked_by: string | null
+  created_at: string
+  updated_at: string
+  profiles?: Profile
+}
+
+export interface MeetingInvite {
+  id: string
+  meeting_id: string
+  user_id: string
+  created_at: string
+  profiles?: Profile
+}
+
+export interface ShootIdea {
+  id: string
+  title: string
+  description: string
+  category: string
+  reference_links: string | null
+  status: 'pending' | 'approved' | 'rejected'
+  reviewed_by: string | null
+  review_notes: string | null
+  points_awarded: boolean
+  created_by: string
+  created_at: string
+  updated_at: string
+  profiles?: Profile
+  reviewer?: Profile
+}
+
+export interface PhShoot {
+  id: string
+  idea_id: string | null
+  title: string
+  description: string | null
+  location: string | null
+  shoot_date: string | null
+  post_date: string | null
+  status: 'planning' | 'scheduled' | 'shooting' | 'editing' | 'completed' | 'cancelled'
+  points_awarded: boolean
+  created_by: string | null
+  created_at: string
+  updated_at: string
+  creator?: Profile
+  idea?: ShootIdea
+  assignments?: ShootAssignment[]
+}
+
+export interface ShootAssignment {
+  id: string
+  shoot_id: string
+  user_id: string
+  role: string
+  status: AssignmentStatus
+  notes: string | null
+  assigned_by: string | null
+  created_at: string
+  updated_at: string
+  profiles?: Profile
+}
+

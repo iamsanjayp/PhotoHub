@@ -21,7 +21,7 @@ import { Textarea } from '@/components/ui/textarea'
 import { format } from 'date-fns'
 import { Send, Calendar, Check, Archive, Clock, ArrowRight, Loader2, Link } from 'lucide-react'
 import { toast } from 'sonner'
-import { cn } from '@/lib/utils'
+import { cn, getMediaUrl } from '@/lib/utils'
 
 export default function InstagramQueuePage() {
   const queryClient = useQueryClient()
@@ -155,7 +155,7 @@ export default function InstagramQueuePage() {
                     {/* Thumbnail */}
                     {media && media.media_type === 'image' && (
                       <div className="h-14 w-14 rounded-lg overflow-hidden border border-white/5 shrink-0 bg-neutral-800">
-                        <img src={media.url} alt="post" className="h-full w-full object-cover" />
+                        <img src={getMediaUrl(media.url)} alt="post" className="h-full w-full object-cover" />
                       </div>
                     )}
                     

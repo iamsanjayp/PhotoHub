@@ -41,6 +41,7 @@ import {
   XCircle,
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
+import { ExportResultsButton } from '@/components/common/export-results-button'
 
 export default function AdminChallengeDetailPage({
   params,
@@ -245,6 +246,18 @@ export default function AdminChallengeDetailPage({
                       ? 'Google Drive Link'
                       : `${challenge.submission_mode} upload`}
                   </div>
+                  <div className="pt-1.5 w-full sm:w-auto">
+                    <ExportResultsButton
+                      type="challenge"
+                      id={challengeId}
+                      title={challenge.title}
+                      challenge={challenge}
+                      submissions={submissions}
+                      exportMode="all"
+                      label="Export Results (CSV)"
+                      className="border-white/10 text-white hover:bg-white/5 rounded-xl h-9 px-3.5 text-xs font-semibold w-full sm:w-auto justify-center"
+                    />
+                  </div>
                 </div>
               </div>
             </div>
@@ -302,12 +315,22 @@ export default function AdminChallengeDetailPage({
 
       {/* Submissions Table */}
       <Card className="border-white/5 bg-black/40 backdrop-blur-xl rounded-2xl overflow-hidden shadow-xl">
-        <CardHeader className="px-6 py-5 border-b border-white/5">
+        <CardHeader className="px-6 py-5 border-b border-white/5 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
           <CardTitle className="text-lg font-bold text-white flex items-center gap-2">
             <Trophy className="h-5 w-5 text-cyan-400" />
             Submissions
             <span className="text-sm font-normal text-neutral-500">({totalSubmissions})</span>
           </CardTitle>
+          <ExportResultsButton
+            type="challenge"
+            id={challengeId}
+            title={challenge?.title}
+            challenge={challenge}
+            submissions={submissions}
+            exportMode="submissions"
+            label="Export Submissions"
+            className="border-white/10 text-white hover:bg-white/5 rounded-xl h-8 px-3 text-xs"
+          />
         </CardHeader>
         <CardContent className="p-0">
           {submissionsLoading ? (

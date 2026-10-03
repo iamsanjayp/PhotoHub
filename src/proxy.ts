@@ -7,7 +7,7 @@ const publicRoutes = ['/', '/login', '/unauthorized', '/apex-request', '/auth/ca
 // Routes that require admin or leader role
 const adminRoutes = ['/admin']
 
-export async function middleware(request: NextRequest) {
+export async function proxy(request: NextRequest) {
   const { pathname } = request.nextUrl
 
   // Skip middleware for static files and API routes
@@ -44,7 +44,7 @@ export async function middleware(request: NextRequest) {
   }
 
   // Validate email domain
-  const email = user.email || ''
+  const email = (user.email || '').toLowerCase().trim()
   if (!email.endsWith('@bitsathy.ac.in')) {
     // Sign out the user and redirect to unauthorized
     await supabase.auth.signOut()
@@ -60,13 +60,34 @@ export async function middleware(request: NextRequest) {
 
   if (isAdminRoute) {
     // Fetch user role from profiles
-    const { data: profile } = await supabase
+    let { data: profile } = await supabase
       .from('profiles')
       .select('role')
       .eq('id', user.id)
       .single()
 
-    if (!profile || !['admin', 'leader'].includes(profile.role)) {
+    if (!profile) {
+      const internalUrl = process.env.SUPABASE_INTERNAL_URL || 'http://kong:8000'
+      const serviceKey = process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || ''
+      try {
+        const res = await fetch(`${internalUrl}/rest/v1/profiles?select=role&id=eq.${user.id}`, {
+          headers: {
+            apikey: serviceKey,
+            Authorization: `Bearer ${serviceKey}`
+          }
+        })
+        if (res.ok) {
+          const rows = await res.json()
+          if (rows && rows.length > 0) {
+            profile = rows[0]
+          }
+        }
+      } catch (err) {
+        console.error('Middleware admin check fallback error:', err)
+      }
+    }
+
+    if (!profile || !['admin', 'board_member', 'leader'].includes(profile.role)) {
       const url = request.nextUrl.clone()
       url.pathname = '/dashboard'
       return NextResponse.redirect(url)

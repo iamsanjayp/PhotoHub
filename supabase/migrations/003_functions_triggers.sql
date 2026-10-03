@@ -7,6 +7,8 @@
 -- ============================================================================
 
 
+SET search_path TO public, auth, extensions;
+
 -- ==========================================================================
 -- 1. handle_new_user()
 -- Trigger: AFTER INSERT ON auth.users
@@ -20,6 +22,7 @@ DECLARE
   _email TEXT;
   _full_name TEXT;
   _avatar_url TEXT;
+  _role public.user_role;
 BEGIN
   _email := NEW.email;
 
@@ -39,22 +42,36 @@ BEGIN
     NEW.raw_user_meta_data ->> 'picture'
   );
 
-  INSERT INTO public.profiles (id, email, full_name, avatar_url, role, created_at, updated_at)
+  -- Set photohub@bitsathy.ac.in as admin, otherwise member
+  IF _email = 'photohub@bitsathy.ac.in' THEN
+    _role := 'admin'::public.user_role;
+  ELSE
+    _role := 'member'::public.user_role;
+  END IF;
+
+  INSERT INTO public.profiles (id, email, full_name, avatar_url, role, is_active, created_at, updated_at)
   VALUES (
     NEW.id,
     _email,
     _full_name,
     _avatar_url,
-    'participant',
+    _role,
+    true,
     NOW(),
     NOW()
-  );
+  )
+  ON CONFLICT (id) DO UPDATE SET
+    email = EXCLUDED.email,
+    full_name = COALESCE(EXCLUDED.full_name, profiles.full_name),
+    avatar_url = COALESCE(EXCLUDED.avatar_url, profiles.avatar_url),
+    updated_at = NOW();
 
   RETURN NEW;
 END;
-$$ LANGUAGE plpgsql SECURITY DEFINER SET search_path = public;
+$$ LANGUAGE plpgsql SECURITY DEFINER SET search_path = public, auth;
 
--- Attach trigger
+-- Attach trigger idempotently
+DROP TRIGGER IF EXISTS on_auth_user_created ON auth.users;
 CREATE TRIGGER on_auth_user_created
   AFTER INSERT ON auth.users
   FOR EACH ROW

@@ -1,7 +1,9 @@
 import type { Metadata } from 'next'
 import { getChallengeById } from '@/actions/challenges'
 import { getSubmissions } from '@/actions/submissions'
+import { getCurrentProfile } from '@/actions/auth'
 import SubmissionForm from '@/components/events/submission-form'
+import { ExportResultsButton } from '@/components/common/export-results-button'
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
 import { Avatar, AvatarImage, AvatarFallback } from '@/components/ui/avatar'
@@ -27,7 +29,10 @@ export async function generateMetadata({ params }: PageProps): Promise<Metadata>
 
 export default async function ChallengeDetailPage({ params }: PageProps) {
   const { challengeId } = await params
-  const result = await getChallengeById(challengeId)
+  const [result, profile] = await Promise.all([
+    getChallengeById(challengeId),
+    getCurrentProfile()
+  ])
 
   if (result.error || !result.data) {
     notFound()
@@ -35,6 +40,7 @@ export default async function ChallengeDetailPage({ params }: PageProps) {
 
   const challenge = result.data
   const isExpired = new Date(challenge.end_date) < new Date()
+  const isAdminOrLeader = profile && ['admin', 'leader'].includes(profile.role)
 
   // Fetch approved submissions for the gallery
   const subResult = await getSubmissions('challenge', challenge.id)
@@ -44,14 +50,37 @@ export default async function ChallengeDetailPage({ params }: PageProps) {
 
   return (
     <div className="space-y-6 pb-12">
-      {/* Back Button */}
-      <Link
-        href="/challenges"
-        className="inline-flex items-center gap-2 text-xs font-semibold text-neutral-400 hover:text-white transition-colors"
-      >
-        <ArrowLeft className="h-3.5 w-3.5" />
-        Back to Challenges
-      </Link>
+      {/* Top Bar: Back Button & Admin Actions */}
+      <div className="flex items-center justify-between gap-4 flex-wrap">
+        <Link
+          href="/challenges"
+          className="inline-flex items-center gap-2 text-xs font-semibold text-neutral-400 hover:text-white transition-colors"
+        >
+          <ArrowLeft className="h-3.5 w-3.5" />
+          Back to Challenges
+        </Link>
+
+        {isAdminOrLeader && (
+          <div className="flex items-center gap-2">
+            <ExportResultsButton
+              type="challenge"
+              id={challenge.id}
+              title={challenge.title}
+              submissions={subResult.data || []}
+              exportMode="all"
+              label="Export Results"
+              size="sm"
+              variant="outline"
+              className="border-white/10 text-white hover:bg-white/5 rounded-xl h-8 px-3 text-xs"
+            />
+            <Button asChild size="sm" variant="ghost" className="h-8 text-neutral-400 hover:text-white hover:bg-white/5 rounded-xl text-xs gap-1">
+              <Link href={`/admin/challenges/${challenge.id}`}>
+                Admin Dashboard
+              </Link>
+            </Button>
+          </div>
+        )}
+      </div>
 
       {/* Title & Theme Info Header (No Banner!) */}
       <div className="space-y-3">

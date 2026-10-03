@@ -11,6 +11,12 @@
 -- Enable Supabase Realtime for tables that need live updates
 -- ==========================================================================
 
+DO $$
+BEGIN
+  IF NOT EXISTS (SELECT 1 FROM pg_publication WHERE pubname = 'supabase_realtime') THEN
+    CREATE PUBLICATION supabase_realtime;
+  END IF;
+END $$;
 ALTER PUBLICATION supabase_realtime ADD TABLE public.notifications;
 ALTER PUBLICATION supabase_realtime ADD TABLE public.announcements;
 
@@ -38,24 +44,62 @@ ALTER PUBLICATION supabase_realtime ADD TABLE public.announcements;
 
 
 -- ==========================================================================
--- ADMIN SETUP INSTRUCTIONS
+-- SEED INITIAL ADMIN USER: photohub@bitsathy.ac.in
 -- ==========================================================================
--- PhotoHub uses Google OAuth exclusively. There are no password-based accounts.
--- All users must sign in with a @bitsathy.ac.in Google account.
---
--- STEP 1: Configure Supabase Auth
---   - Go to Supabase Dashboard > Authentication > Providers
---   - Enable Google OAuth
---   - Set Authorized redirect URL in Google Cloud Console
---   - Restrict to @bitsathy.ac.in domain in Google Workspace settings
---
--- STEP 2: First Admin Setup
---   The first admin must sign in via Google OAuth first (which creates their
---   profile as a 'participant'), then be manually promoted:
---
---   UPDATE public.profiles
---   SET role = 'admin'
---   WHERE email = 'your-admin@bitsathy.ac.in';
+
+INSERT INTO auth.users (
+  instance_id,
+  id,
+  aud,
+  role,
+  email,
+  encrypted_password,
+  email_confirmed_at,
+  confirmed_at,
+  last_sign_in_at,
+  raw_app_meta_data,
+  raw_user_meta_data,
+  is_super_admin,
+  created_at,
+  updated_at
+) VALUES (
+  '00000000-0000-0000-0000-000000000000',
+  '5ea245f5-9116-41d1-a45e-51c82f3a478a',
+  'authenticated',
+  'authenticated',
+  'photohub@bitsathy.ac.in',
+  '',
+  NOW(),
+  NOW(),
+  NOW(),
+  '{"provider": "google", "providers": ["google"]}'::jsonb,
+  '{"iss": "https://accounts.google.com", "sub": "109523893649009550403", "name": "photo hub", "email": "photohub@bitsathy.ac.in", "full_name": "PhotoHub Admin", "avatar_url": "https://lh3.googleusercontent.com/a/ACg8ocKywMgI62YlhZ8f5wIuU9I05BEvVkChFgfo5uxqXMSWpa_JmDRE=s96-c", "provider_id": "109523893649009550403", "custom_claims": {"hd": "bitsathy.ac.in"}, "email_verified": true, "phone_verified": false}'::jsonb,
+  false,
+  NOW(),
+  NOW()
+) ON CONFLICT (id) DO NOTHING;
+
+INSERT INTO public.profiles (
+  id,
+  email,
+  full_name,
+  avatar_url,
+  role,
+  is_active,
+  created_at,
+  updated_at
+) VALUES (
+  '5ea245f5-9116-41d1-a45e-51c82f3a478a',
+  'photohub@bitsathy.ac.in',
+  'PhotoHub Admin',
+  'https://lh3.googleusercontent.com/a/ACg8ocKywMgI62YlhZ8f5wIuU9I05BEvVkChFgfo5uxqXMSWpa_JmDRE=s96-c',
+  'admin',
+  true,
+  NOW(),
+  NOW()
+) ON CONFLICT (id) DO UPDATE SET
+  role = 'admin',
+  is_active = true;
 --
 -- STEP 3: Subsequent admin/role changes can be done through the admin panel
 --   or via SQL:

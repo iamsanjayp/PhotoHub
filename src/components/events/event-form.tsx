@@ -1,20 +1,22 @@
 'use client'
 
-import { useState, useTransition } from 'react'
+import { useState, useTransition, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
 import { useForm } from 'react-hook-form'
 import { zodResolver } from '@hookform/resolvers/zod'
 import { createEventSchema, type CreateEventInput } from '@/lib/validators/events'
-import { createEvent, updateEvent } from '@/actions/events'
+import { createEvent, updateEvent, getEventInvites } from '@/actions/events'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Textarea } from '@/components/ui/textarea'
 import { Card, CardContent } from '@/components/ui/card'
-import { CldUploadWidget } from 'next-cloudinary'
-import { Loader2, Image as ImageIcon, Sparkles, X } from 'lucide-react'
+import { MediaUpload } from '@/components/ui/media-upload'
+import { Loader2, Image as ImageIcon, Sparkles, X, Search, Users, Check } from 'lucide-react'
 import { toast } from 'sonner'
 import { cn } from '@/lib/utils'
+import { getMembers } from '@/actions/members'
+import { Badge } from '@/components/ui/badge'
 
 interface EventFormProps {
   initialData?: any // DB event row for edit mode
@@ -25,6 +27,22 @@ export default function EventForm({ initialData, isEdit = false }: EventFormProp
   const router = useRouter()
   const [isPending, startTransition] = useTransition()
   const [bannerUrl, setBannerUrl] = useState<string>(initialData?.banner_url || '')
+  const [allMembers, setAllMembers] = useState<any[]>([])
+  const [invitedUserIds, setInvitedUserIds] = useState<string[]>([])
+  const [inviteSearch, setInviteSearch] = useState('')
+
+  useEffect(() => {
+    getMembers().then((res) => {
+      if (res.data) setAllMembers(res.data)
+    })
+    if (isEdit && initialData?.id) {
+      getEventInvites(initialData.id).then((res) => {
+        if (res.data) {
+          setInvitedUserIds(res.data.map((inv: any) => inv.user_id))
+        }
+      })
+    }
+  }, [isEdit, initialData?.id])
 
   // Set up react-hook-form
   const {
@@ -54,6 +72,7 @@ export default function EventForm({ initialData, isEdit = false }: EventFormProp
   })
 
   const watchSubmissionRequired = watch('submission_required')
+  const watchVisibility = watch('visibility')
 
   const handleUploadSuccess = (result: any) => {
     const info = result.info
@@ -77,6 +96,14 @@ export default function EventForm({ initialData, isEdit = false }: EventFormProp
         start_date: new Date(data.start_date).toISOString(),
         end_date: new Date(data.end_date).toISOString(),
         submission_mode: data.submission_required ? (data.submission_mode || null) : null,
+        invited_user_ids: data.visibility === 'invite_only' ? invitedUserIds : [],
+      }
+
+      if (formattedData.registration_deadline && formattedData.start_date) {
+        if (new Date(formattedData.registration_deadline) > new Date(formattedData.start_date)) {
+          toast.error("Registration deadline cannot be after the start date.")
+          return
+        }
       }
 
       const res = isEdit
@@ -119,26 +146,22 @@ export default function EventForm({ initialData, isEdit = false }: EventFormProp
                 </div>
               </div>
             ) : (
-              <CldUploadWidget
-                uploadPreset="photohub_unsigned"
+              <MediaUpload
                 onSuccess={handleUploadSuccess}
-                onClose={() => {
-                  document.body.style.overflow = '';
-                  document.body.style.pointerEvents = '';
-                }}
               >
-                {({ open }) => (
+                {({ open, isUploading }) => (
                   <button
                     type="button"
                     onClick={() => open()}
+                    disabled={isUploading}
                     className="w-full aspect-[4/5] max-w-xs mx-auto border-2 border-dashed border-white/5 bg-white/[0.01] hover:bg-white/[0.02] rounded-2xl flex flex-col items-center justify-center gap-2 text-neutral-400 hover:text-white transition-all select-none group"
                   >
                     <ImageIcon className="h-8 w-8 text-neutral-600 group-hover:text-cyan-400 transition-colors" />
-                    <span className="text-xs font-semibold">Click to upload event poster</span>
-                    <span className="text-[10px] text-neutral-500">Suggested ratio: 4:5 (Max 10MB)</span>
+                    <span className="text-xs font-semibold">{isUploading ? 'Uploading...' : 'Click to upload event poster'}</span>
+                    <span className="text-[10px] text-neutral-500">Stored on local independent server</span>
                   </button>
                 )}
-              </CldUploadWidget>
+              </MediaUpload>
             )}
             {errors.banner_url && (
               <p className="text-xs text-red-500 mt-1">{String(errors.banner_url.message)}</p>
@@ -212,6 +235,98 @@ export default function EventForm({ initialData, isEdit = false }: EventFormProp
                 <p className="text-xs text-red-500 mt-1">{String(errors.visibility.message)}</p>
               )}
             </div>
+
+            {/* Invite Members Picker if Invite Only */}
+            {watchVisibility === 'invite_only' && (
+              <div className="space-y-3 col-span-1 md:col-span-2 p-4 bg-purple-950/10 border border-purple-500/20 rounded-2xl">
+                <div className="flex flex-col sm:flex-row justify-between sm:items-center gap-2">
+                  <div>
+                    <Label className="text-purple-300 font-bold text-xs uppercase tracking-wider flex items-center gap-1.5">
+                      <Users className="h-4 w-4 text-purple-400" />
+                      Select Members to Invite ({invitedUserIds.length} selected)
+                    </Label>
+                    <p className="text-[11px] text-neutral-400 mt-0.5">
+                      Only invited members (and Admins/Board Members) will be able to see and register for this event.
+                    </p>
+                  </div>
+                  {invitedUserIds.length > 0 && (
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="sm"
+                      onClick={() => setInvitedUserIds([])}
+                      className="text-xs text-neutral-400 hover:text-white h-7 px-2"
+                    >
+                      Clear All
+                    </Button>
+                  )}
+                </div>
+
+                <div className="relative">
+                  <Search className="absolute left-3 top-2.5 h-4 w-4 text-neutral-500" />
+                  <Input
+                    type="text"
+                    value={inviteSearch}
+                    onChange={(e) => setInviteSearch(e.target.value)}
+                    placeholder="Search member by name or roll number..."
+                    className="h-9 pl-9 border-white/5 bg-neutral-950 text-xs text-white rounded-xl placeholder-neutral-500"
+                  />
+                  {inviteSearch && (
+                    <button
+                      type="button"
+                      onClick={() => setInviteSearch('')}
+                      className="absolute right-3 top-2.5 text-neutral-500 hover:text-white"
+                    >
+                      <X className="h-4 w-4" />
+                    </button>
+                  )}
+                </div>
+
+                <div className="max-h-48 overflow-y-auto divide-y divide-white/5 border border-white/5 rounded-xl bg-black/40">
+                  {allMembers
+                    .filter((m: any) => {
+                      if (!inviteSearch.trim()) return true
+                      const q = inviteSearch.toLowerCase()
+                      return (
+                        (m.full_name && m.full_name.toLowerCase().includes(q)) ||
+                        (m.roll_number && m.roll_number.toLowerCase().includes(q)) ||
+                        (m.email && m.email.toLowerCase().includes(q))
+                      )
+                    })
+                    .map((m: any) => {
+                      const isSelected = invitedUserIds.includes(m.id)
+                      return (
+                        <label
+                          key={m.id}
+                          className="flex items-center justify-between p-2.5 hover:bg-white/5 cursor-pointer text-xs transition-colors"
+                        >
+                          <div className="flex items-center gap-2.5 min-w-0">
+                            <input
+                              type="checkbox"
+                              checked={isSelected}
+                              onChange={() => {
+                                setInvitedUserIds((prev) =>
+                                  isSelected ? prev.filter((id) => id !== m.id) : [...prev, m.id]
+                                )
+                              }}
+                              className="w-4 h-4 accent-purple-500 rounded cursor-pointer shrink-0"
+                            />
+                            <div className="truncate">
+                              <span className="font-semibold text-white block truncate">{m.full_name || 'Member'}</span>
+                              <span className="text-[10px] text-neutral-400 block truncate font-mono">
+                                {m.roll_number ? `${m.roll_number} • ` : ''}{m.email}
+                              </span>
+                            </div>
+                          </div>
+                          <Badge variant="outline" className="border-white/10 text-[9px] uppercase shrink-0">
+                            {m.role?.replace('_', ' ')}
+                          </Badge>
+                        </label>
+                      )
+                    })}
+                </div>
+              </div>
+            )}
 
             {/* Venue */}
             <div className="space-y-2">

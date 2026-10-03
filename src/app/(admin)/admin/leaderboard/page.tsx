@@ -12,7 +12,8 @@ import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar'
 import { Badge } from '@/components/ui/badge'
 import { Skeleton } from '@/components/ui/skeleton'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
-import { Award, RefreshCw, Users, TrendingUp, Trophy, Plus, Minus, Clock, History, Send, Sparkles } from 'lucide-react'
+import { getMembers } from '@/actions/members'
+import { Award, RefreshCw, Users, TrendingUp, Trophy, Plus, Minus, Clock, History, Send, Sparkles, Search, X } from 'lucide-react'
 import { toast } from 'sonner'
 import { cn } from '@/lib/utils'
 import { format } from 'date-fns'
@@ -23,8 +24,20 @@ export default function AdminLeaderboardPage() {
 
   // Manual points form state
   const [selectedUserId, setSelectedUserId] = useState('')
+  const [memberSearch, setMemberSearch] = useState('')
   const [pointsAmount, setPointsAmount] = useState<number>(0)
   const [reason, setReason] = useState('')
+
+  // Query all members for search
+  const { data: membersResult } = useQuery({
+    queryKey: ['admin-all-members'],
+    queryFn: async () => {
+      const res = await getMembers()
+      if (res.error) throw new Error(res.error)
+      return res.data || []
+    },
+    refetchOnWindowFocus: false,
+  })
 
   // Leaderboard query
   const { data: leaderboardResult, isLoading: leaderboardLoading } = useQuery({
@@ -101,13 +114,54 @@ export default function AdminLeaderboardPage() {
   const getRoleBadge = (role: string) => {
     const config: Record<string, string> = {
       admin: 'bg-red-500/10 text-red-400 border-red-500/20',
+      board_member: 'bg-purple-500/10 text-purple-400 border-purple-500/20',
+      committee_member: 'bg-amber-500/10 text-amber-400 border-amber-500/20',
+      member: 'bg-cyan-500/10 text-cyan-400 border-cyan-500/20',
       leader: 'bg-purple-500/10 text-purple-400 border-purple-500/20',
       camera_holder: 'bg-amber-500/10 text-amber-400 border-amber-500/20',
       participant: 'bg-cyan-500/10 text-cyan-400 border-cyan-500/20',
       guest: 'bg-neutral-500/10 text-neutral-400 border-neutral-500/20',
     }
-    return config[role] || config.guest
+    return config[role] || config.member || config.guest
   }
+
+  const allMembers = (membersResult as any) || []
+  const pointsMap = new Map<string, number>()
+  leaderboard.forEach((entry: any) => {
+    if (entry.user_id) pointsMap.set(entry.user_id, entry.total_points)
+  })
+
+  const combinedMembers = allMembers.length > 0
+    ? allMembers.map((m: any) => ({
+        id: m.id,
+        full_name: m.full_name || 'Member',
+        roll_number: m.roll_number,
+        email: m.email,
+        avatar_url: m.avatar_url,
+        role: m.role,
+        points: pointsMap.get(m.id) ?? 0,
+      }))
+    : leaderboard.map((e: any) => ({
+        id: e.user_id,
+        full_name: e.profiles?.full_name || 'Member',
+        roll_number: e.profiles?.roll_number,
+        email: e.profiles?.email,
+        avatar_url: e.profiles?.avatar_url,
+        role: e.profiles?.role,
+        points: e.total_points ?? 0,
+      }))
+
+  const filteredMembers = combinedMembers.filter((m: any) => {
+    if (!memberSearch.trim()) return true
+    const q = memberSearch.toLowerCase()
+    return (
+      (m.full_name && m.full_name.toLowerCase().includes(q)) ||
+      (m.roll_number && m.roll_number.toLowerCase().includes(q)) ||
+      (m.email && m.email.toLowerCase().includes(q))
+    )
+  })
+
+  const selectedMember = combinedMembers.find((m: any) => m.id === selectedUserId)
 
   return (
     <div className="space-y-8 pb-12">
@@ -309,25 +363,102 @@ export default function AdminLeaderboardPage() {
               </CardDescription>
             </CardHeader>
             <CardContent className="p-5 space-y-4">
-              {/* User Selector */}
+              {/* User Selector with Quick Search */}
               <div className="space-y-1.5">
-                <label className="text-[10px] font-bold uppercase tracking-wider text-neutral-500">Select Member</label>
-                <Select value={selectedUserId} onValueChange={(val) => setSelectedUserId(val ?? '')}>
-                  <SelectTrigger className="h-10 border-white/5 bg-white/[0.02] text-sm text-neutral-200 placeholder-neutral-500 rounded-xl focus:ring-cyan-500/50">
-                    <SelectValue placeholder="Choose a member..." />
-                  </SelectTrigger>
-                  <SelectContent className="bg-neutral-900 border-white/5 text-neutral-200 max-h-60">
-                    {leaderboard.map((entry: any) => (
-                      <SelectItem
-                        key={entry.user_id}
-                        value={entry.user_id}
-                        className="focus:bg-white/5 focus:text-white text-xs"
-                      >
-                        {entry.profiles?.full_name || 'Anonymous'} — {entry.total_points} pts
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
+                <label className="text-[10px] font-bold uppercase tracking-wider text-neutral-500">
+                  Select Member {selectedMember && `(${selectedMember.points} current pts)`}
+                </label>
+
+                {selectedMember ? (
+                  <div className="flex items-center justify-between p-2.5 bg-cyan-500/10 border border-cyan-500/30 rounded-xl">
+                    <div className="flex items-center gap-2.5 min-w-0">
+                      <Avatar className="h-8 w-8 rounded-lg shrink-0">
+                        <AvatarImage src={selectedMember.avatar_url || undefined} />
+                        <AvatarFallback className="bg-neutral-800 text-white text-xs">
+                          {selectedMember.full_name?.substring(0, 2).toUpperCase()}
+                        </AvatarFallback>
+                      </Avatar>
+                      <div className="min-w-0">
+                        <p className="text-xs font-bold text-white truncate">{selectedMember.full_name}</p>
+                        <p className="text-[10px] text-neutral-400 truncate">
+                          {selectedMember.roll_number ? `Roll: ${selectedMember.roll_number} • ` : ''}
+                          {selectedMember.points} pts
+                        </p>
+                      </div>
+                    </div>
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="icon"
+                      onClick={() => {
+                        setSelectedUserId('')
+                        setMemberSearch('')
+                      }}
+                      className="h-7 w-7 text-neutral-400 hover:text-white rounded-lg"
+                      title="Clear selection"
+                    >
+                      <X className="h-3.5 w-3.5" />
+                    </Button>
+                  </div>
+                ) : (
+                  <div className="space-y-2">
+                    <div className="relative">
+                      <Search className="absolute left-3 top-2.5 h-4 w-4 text-neutral-500" />
+                      <Input
+                        type="text"
+                        value={memberSearch}
+                        onChange={(e) => setMemberSearch(e.target.value)}
+                        placeholder="Search member by name or roll number..."
+                        className="h-10 pl-9 border-white/5 bg-white/[0.02] text-xs text-neutral-200 placeholder-neutral-500 rounded-xl focus-visible:ring-cyan-500/50"
+                      />
+                      {memberSearch && (
+                        <button
+                          type="button"
+                          onClick={() => setMemberSearch('')}
+                          className="absolute right-3 top-3 text-neutral-500 hover:text-white"
+                        >
+                          <X className="h-3.5 w-3.5" />
+                        </button>
+                      )}
+                    </div>
+
+                    <div className="max-h-48 overflow-y-auto divide-y divide-white/5 border border-white/5 bg-neutral-950/80 rounded-xl">
+                      {filteredMembers.length === 0 ? (
+                        <div className="p-3 text-center text-xs text-neutral-500">
+                          No members found matching "{memberSearch}"
+                        </div>
+                      ) : (
+                        filteredMembers.map((m: any) => (
+                          <button
+                            key={m.id}
+                            type="button"
+                            onClick={() => {
+                              setSelectedUserId(m.id)
+                              setMemberSearch('')
+                            }}
+                            className="w-full text-left p-2.5 hover:bg-cyan-500/10 transition-colors flex items-center justify-between gap-2 text-xs"
+                          >
+                            <div className="flex items-center gap-2 min-w-0">
+                              <Avatar className="h-6 w-6 rounded-md shrink-0">
+                                <AvatarImage src={m.avatar_url || undefined} />
+                                <AvatarFallback className="bg-neutral-800 text-[10px]">
+                                  {m.full_name?.substring(0, 2).toUpperCase()}
+                                </AvatarFallback>
+                              </Avatar>
+                              <div className="truncate">
+                                <span className="font-semibold text-neutral-200 block truncate">{m.full_name}</span>
+                                {m.roll_number && (
+                                  <span className="text-[10px] text-neutral-500 block truncate font-mono">{m.roll_number}</span>
+                                )}
+                              </div>
+                            </div>
+                            <span className="text-cyan-400 font-bold shrink-0">{m.points} pts</span>
+                          </button>
+                        ))
+                      )}
+                    </div>
+                  </div>
+                )}
               </div>
 
               {/* Points Amount */}
@@ -429,15 +560,25 @@ export default function AdminLeaderboardPage() {
                     >
                       <div className="flex items-start justify-between gap-3">
                         <div className="min-w-0 flex-1">
-                          <p className="text-sm font-semibold text-white truncate">
+                          <div className="flex items-center gap-2 mb-0.5">
+                            <span className="text-xs font-bold text-cyan-400">
+                              {log.recipient?.full_name || 'Member'}
+                            </span>
+                            {log.recipient?.roll_number && (
+                              <span className="text-[10px] text-neutral-400">
+                                ({log.recipient.roll_number})
+                              </span>
+                            )}
+                          </div>
+                          <p className="text-xs text-neutral-300 truncate">
                             {log.reason || 'No reason provided'}
                           </p>
                           <div className="flex items-center gap-2 mt-1">
                             <Badge className="border-none text-[9px] font-bold px-2 py-0.5 rounded-full capitalize bg-white/5 text-neutral-400">
-                              {log.source_type || 'manual'}
+                              {log.source_type ? log.source_type.replace('_', ' ') : 'manual'}
                             </Badge>
                             {log.profiles?.full_name && (
-                              <span className="text-[10px] text-neutral-600">
+                              <span className="text-[10px] text-neutral-500">
                                 by {log.profiles.full_name}
                               </span>
                             )}

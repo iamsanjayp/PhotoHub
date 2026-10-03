@@ -23,6 +23,7 @@ import {
 } from 'lucide-react'
 import { format } from 'date-fns'
 import { cn } from '@/lib/utils'
+import { canAccessCamera } from '@/lib/constants/roles'
 
 export default async function DashboardPage() {
   const profile = await getCurrentProfile()
@@ -38,7 +39,7 @@ export default async function DashboardPage() {
     getEvents({ status: 'upcoming' }),
     getAnnouncements(false),
     getUserPoints(profile.id),
-    ['admin', 'leader', 'camera_holder'].includes(profile.role) ? getMyAssignments() : Promise.resolve({ data: [] })
+    (canAccessCamera(profile.role) || ['admin', 'leader', 'camera_holder'].includes(profile.role)) ? getMyAssignments() : Promise.resolve({ data: [] })
   ])
 
   const upcomingEvents = (eventsResult.data || []).slice(0, 3)

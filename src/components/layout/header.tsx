@@ -110,14 +110,24 @@ export default function Header({ profile }: { profile: Profile }) {
       </div>
 
       {/* Search Input (Desktop) */}
-      <div className="hidden md:flex relative max-w-md w-full ml-0">
+      <form 
+        className="hidden md:flex relative max-w-md w-full ml-0"
+        onSubmit={(e) => {
+          e.preventDefault()
+          const q = new FormData(e.currentTarget).get('q')
+          if (q && q.toString().trim()) {
+            router.push(`/search?q=${encodeURIComponent(q.toString().trim())}`)
+          }
+        }}
+      >
         <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-neutral-500" />
         <Input 
+          name="q"
           type="search" 
           placeholder="Search events, posts, members..." 
           className="pl-9 h-10 w-[300px] lg:w-[400px] border-neutral-200 dark:border-white/5 bg-neutral-100 dark:bg-white/[0.03] text-sm text-neutral-800 dark:text-neutral-200 placeholder-neutral-500 focus-visible:ring-cyan-500/50 rounded-xl"
         />
-      </div>
+      </form>
 
       <div className="flex items-center gap-4">
         {/* Notifications Bell */}

@@ -12,7 +12,7 @@ import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Textarea } from '@/components/ui/textarea'
 import { Card, CardContent } from '@/components/ui/card'
-import { CldUploadWidget } from 'next-cloudinary'
+import { MediaUpload } from '@/components/ui/media-upload'
 import { Loader2, Image as ImageIcon, Sparkles, ChevronLeft, Trophy } from 'lucide-react'
 import { toast } from 'sonner'
 
@@ -20,12 +20,12 @@ const challengeSchema = z.object({
   title: z.string().min(3, 'Title must be at least 3 characters').max(100),
   description: z.string().max(2000).optional().nullable().or(z.literal('')),
   theme: z.string().max(100).optional().nullable().or(z.literal('')),
-  banner_url: z.string().url().optional().nullable().or(z.literal('')),
+  banner_url: z.string().max(2000).optional().nullable().or(z.literal('')),
   start_date: z.string().min(1, 'Start date is required'),
   end_date: z.string().min(1, 'End date is required'),
   points: z.number().int().min(1).default(20),
   submission_mode: z.enum(['image', 'text', 'link', 'drive_link']).default('image'),
-  external_link: z.string().url('Invalid URL').optional().nullable().or(z.literal('')),
+  external_link: z.string().max(2000).optional().nullable().or(z.literal('')),
 })
 
 type ChallengeInput = z.infer<typeof challengeSchema>
@@ -127,26 +127,22 @@ export default function NewChallengePage() {
                   </button>
                 </div>
               ) : (
-                <CldUploadWidget
-                  uploadPreset="photohub_unsigned"
+                <MediaUpload
                   onSuccess={handleUploadSuccess}
-                  onClose={() => {
-                    document.body.style.overflow = '';
-                    document.body.style.pointerEvents = '';
-                  }}
                 >
-                  {({ open }) => (
+                  {({ open, isUploading }) => (
                     <button
                       type="button"
                       onClick={() => open()}
+                      disabled={isUploading}
                       className="w-full aspect-[4/5] max-w-xs mx-auto border-2 border-dashed border-white/5 bg-white/[0.01] hover:bg-white/[0.02] rounded-2xl flex flex-col items-center justify-center gap-2 text-neutral-400 hover:text-white transition-all select-none group"
                     >
                       <ImageIcon className="h-8 w-8 text-neutral-600 group-hover:text-cyan-400 transition-colors" />
-                      <span className="text-xs font-semibold">Click to upload challenge poster</span>
-                      <span className="text-[10px] text-neutral-500">Suggested ratio: 4:5. Max size: 10MB (JPEG, PNG)</span>
+                      <span className="text-xs font-semibold">{isUploading ? 'Uploading...' : 'Click to upload challenge poster'}</span>
+                      <span className="text-[10px] text-neutral-500">Stored on local server disk</span>
                     </button>
                   )}
-                </CldUploadWidget>
+                </MediaUpload>
               )}
             </div>
 
