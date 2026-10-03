@@ -7,6 +7,13 @@ const publicRoutes = ['/', '/login', '/unauthorized', '/apex-request', '/auth/ca
 // Routes that require admin or leader role
 const adminRoutes = ['/admin']
 
+function getPublicOrigin() {
+  if (process.env.NODE_ENV === 'development') {
+    return 'http://localhost:3000'
+  }
+  return process.env.SITE_URL || 'https://photohub.bitsathy.ac.in'
+}
+
 export async function proxy(request: NextRequest) {
   const { pathname } = request.nextUrl
 
@@ -24,10 +31,6 @@ export async function proxy(request: NextRequest) {
 
   const { user, supabaseResponse, supabase } = await updateSession(request)
 
-  console.log('Middleware Path:', pathname)
-  console.log('Middleware Cookies:', request.cookies.getAll().map(c => c.name))
-  console.log('Middleware User:', user?.email)
-
   // Check if current path is public
   const isPublicRoute = publicRoutes.some(
     (route) => pathname === route || pathname.startsWith(`${route}/`)
@@ -40,10 +43,8 @@ export async function proxy(request: NextRequest) {
 
   // Redirect unauthenticated users to login
   if (!user) {
-    const url = request.nextUrl.clone()
-    url.pathname = '/login'
-    url.searchParams.set('redirect', pathname)
-    return NextResponse.redirect(url)
+    const origin = getPublicOrigin()
+    return NextResponse.redirect(`${origin}/login?redirect=${encodeURIComponent(pathname)}`)
   }
 
   // Validate email domain
@@ -51,9 +52,8 @@ export async function proxy(request: NextRequest) {
   if (!email.endsWith('@bitsathy.ac.in')) {
     // Sign out the user and redirect to unauthorized
     await supabase.auth.signOut()
-    const url = request.nextUrl.clone()
-    url.pathname = '/unauthorized'
-    return NextResponse.redirect(url)
+    const origin = getPublicOrigin()
+    return NextResponse.redirect(`${origin}/unauthorized`)
   }
 
   // Check admin routes
@@ -91,9 +91,8 @@ export async function proxy(request: NextRequest) {
     }
 
     if (!profile || !['admin', 'board_member', 'leader'].includes(profile.role)) {
-      const url = request.nextUrl.clone()
-      url.pathname = '/dashboard'
-      return NextResponse.redirect(url)
+      const origin = getPublicOrigin()
+      return NextResponse.redirect(`${origin}/dashboard`)
     }
   }
 

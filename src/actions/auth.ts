@@ -7,12 +7,16 @@ import { headers } from 'next/headers'
 import { revalidatePath } from 'next/cache'
 import type { UserRole } from '@/types/database'
 
+function getPublicOrigin() {
+  if (process.env.NODE_ENV === 'development') {
+    return 'http://localhost:3000'
+  }
+  return process.env.SITE_URL || 'https://photohub.bitsathy.ac.in'
+}
+
 export async function signInWithGoogle() {
   const supabase = await createClient()
-  const headersList = await headers()
-  const host = headersList.get('x-forwarded-host') || headersList.get('host')
-  const proto = headersList.get('x-forwarded-proto') || (host?.includes('localhost') ? 'http' : 'https')
-  const origin = process.env.SITE_URL || (host?.includes('localhost') && process.env.NEXT_PUBLIC_SUPABASE_URL ? process.env.NEXT_PUBLIC_SUPABASE_URL : `${proto}://${host}`)
+  const origin = getPublicOrigin()
 
   const { data, error } = await supabase.auth.signInWithOAuth({
     provider: 'google',

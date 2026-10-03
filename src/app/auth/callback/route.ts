@@ -2,16 +2,18 @@ import { type NextRequest, NextResponse } from 'next/server'
 import { createServerClient } from '@supabase/ssr'
 import { customFetch } from '@/lib/supabase/fetch'
 
+function getPublicOrigin() {
+  if (process.env.NODE_ENV === 'development') {
+    return 'http://localhost:3000'
+  }
+  return process.env.SITE_URL || 'https://photohub.bitsathy.ac.in'
+}
+
 export async function GET(request: NextRequest) {
   const { searchParams } = new URL(request.url)
   const code = searchParams.get('code')
   const next = searchParams.get('next') ?? '/dashboard'
-
-  // Determine true public origin (avoid container internal localhost:3000)
-  const forwardedHost = request.headers.get('x-forwarded-host')
-  const host = forwardedHost || request.headers.get('host') || 'photohub.bitsathy.ac.in'
-  const proto = request.headers.get('x-forwarded-proto') || (host.includes('localhost') ? 'http' : 'https')
-  const origin = process.env.SITE_URL || (host.includes('localhost') && process.env.NEXT_PUBLIC_SUPABASE_URL ? process.env.NEXT_PUBLIC_SUPABASE_URL : `${proto}://${host}`)
+  const origin = getPublicOrigin()
 
   if (code) {
     const response = NextResponse.redirect(`${origin}${next}`)
