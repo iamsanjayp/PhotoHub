@@ -9,7 +9,7 @@ import { Input } from '@/components/ui/input'
 import { Badge } from '@/components/ui/badge'
 import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { 
-  Send, 
+  Camera, 
   Search, 
   Clock, 
   MapPin, 
@@ -19,17 +19,21 @@ import {
   X, 
   Loader2, 
   Calendar,
-  AlertCircle
+  AlertCircle,
+  FileCheck2,
+  Sparkles
 } from 'lucide-react'
 import { toast } from 'sonner'
 import { cn } from '@/lib/utils'
-import { AddApexDialog } from '@/components/apex/add-apex-dialog'
+import { ScheduleShootDialog } from '@/components/apex/schedule-shoot-dialog'
+import { useAuth } from '@/providers/auth-provider'
 
 export default function AdminApexPage() {
+  const { profile } = useAuth()
   const [requests, setRequests] = useState<any[]>([])
   const [loading, setLoading] = useState(true)
   const [searchTerm, setSearchTerm] = useState('')
-  const [statusTab, setStatusTab] = useState('pending')
+  const [statusTab, setStatusTab] = useState('scheduled')
   const [isPending, startTransition] = useTransition()
 
   const loadRequests = async () => {
@@ -64,7 +68,7 @@ export default function AdminApexPage() {
 
   const handleReject = async (id: string, name: string) => {
     const reason = prompt(`Enter rejection reason for "${name}":`)
-    if (reason === null) return // cancelled
+    if (reason === null) return
     if (!reason.trim()) {
       toast.error('Rejection reason is required')
       return
@@ -88,20 +92,17 @@ export default function AdminApexPage() {
     const matchesSearch = 
       req.event_name.toLowerCase().includes(searchTerm.toLowerCase()) ||
       req.organizer_name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      (req.department && req.department.toLowerCase().includes(searchTerm.toLowerCase()))
+      (req.department && req.department.toLowerCase().includes(searchTerm.toLowerCase())) ||
+      (req.venue && req.venue.toLowerCase().includes(searchTerm.toLowerCase()))
     
     let matchesStatus = false
-    if (statusTab === 'pending') {
-      matchesStatus = req.status === 'pending'
-    } else if (statusTab === 'active') {
-      // approved, assigned, ongoing
+    if (statusTab === 'scheduled') {
       matchesStatus = ['approved', 'assigned', 'ongoing'].includes(req.status)
     } else if (statusTab === 'completed') {
-      // completed, delivered
       matchesStatus = ['completed', 'delivered'].includes(req.status)
-    } else if (statusTab === 'rejected') {
-      matchesStatus = req.status === 'rejected'
-    } else {
+    } else if (statusTab === 'pending') {
+      matchesStatus = req.status === 'pending'
+    } else if (statusTab === 'all') {
       matchesStatus = true
     }
 
@@ -128,27 +129,34 @@ export default function AdminApexPage() {
   }
 
   // Counter helpers
-  const countPending = requests.filter(r => r.status === 'pending').length
-  const countActive = requests.filter(r => ['approved', 'assigned', 'ongoing'].includes(r.status)).length
+  const countScheduled = requests.filter(r => ['approved', 'assigned', 'ongoing'].includes(r.status)).length
   const countCompleted = requests.filter(r => ['completed', 'delivered'].includes(r.status)).length
+  const countPending = requests.filter(r => r.status === 'pending').length
 
   return (
     <div className="space-y-8 pb-12">
       {/* Title & Actions */}
       <div className="flex flex-col sm:flex-row justify-between sm:items-center gap-4">
         <div className="space-y-1">
-          <h1 className="text-3xl font-extrabold tracking-tight text-white flex items-center gap-2">
-            <Send className="h-7 w-7 text-cyan-400" />
-            APEX Coverage Pipeline
-          </h1>
+          <div className="flex items-center gap-2">
+            <h1 className="text-3xl font-extrabold tracking-tight text-white flex items-center gap-2">
+              <Camera className="h-7 w-7 text-cyan-400" />
+              Event Coverage Shoots
+            </h1>
+            <Badge className="bg-cyan-500/10 text-cyan-400 border border-cyan-500/20 text-xs px-2.5 py-0.5 rounded-full">
+              {countScheduled} Active
+            </Badge>
+          </div>
           <p className="text-neutral-400 text-sm">
-            Moderate public photography coverage requests, assign club crews, track deliverables, and manage completions.
+            Schedule campus & APEX event coverages, manage shoot crews, allocate club cameras, and track deliverables.
           </p>
         </div>
-        <AddApexDialog 
+
+        <ScheduleShootDialog 
+          currentUser={profile || undefined}
           onSuccess={() => {
             loadRequests()
-            setStatusTab('active')
+            setStatusTab('scheduled')
           }} 
         />
       </div>
@@ -157,17 +165,19 @@ export default function AdminApexPage() {
       <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
         <Tabs value={statusTab} onValueChange={setStatusTab} className="w-full md:w-auto">
           <TabsList className="bg-white/[0.02] border border-white/5 group-data-horizontal/tabs:h-10 h-10 p-1 rounded-xl flex overflow-x-auto whitespace-nowrap scrollbar-none w-full md:w-auto">
-            <TabsTrigger value="pending" className="data-[state=active]:bg-cyan-500 data-[state=active]:text-black text-xs font-bold rounded-lg px-4 h-full">
-              Pending ({countPending})
-            </TabsTrigger>
-            <TabsTrigger value="active" className="data-[state=active]:bg-cyan-500 data-[state=active]:text-black text-xs font-bold rounded-lg px-4 h-full">
-              Active ({countActive})
+            <TabsTrigger value="scheduled" className="data-[state=active]:bg-cyan-500 data-[state=active]:text-black text-xs font-bold rounded-lg px-4 h-full">
+              Scheduled & In Progress ({countScheduled})
             </TabsTrigger>
             <TabsTrigger value="completed" className="data-[state=active]:bg-cyan-500 data-[state=active]:text-black text-xs font-bold rounded-lg px-4 h-full">
-              Done ({countCompleted})
+              Completed ({countCompleted})
             </TabsTrigger>
-            <TabsTrigger value="rejected" className="data-[state=active]:bg-cyan-500 data-[state=active]:text-black text-xs font-bold rounded-lg px-4 h-full">
-              Rejected
+            {countPending > 0 && (
+              <TabsTrigger value="pending" className="data-[state=active]:bg-cyan-500 data-[state=active]:text-black text-xs font-bold rounded-lg px-4 h-full">
+                Pending Requests ({countPending})
+              </TabsTrigger>
+            )}
+            <TabsTrigger value="all" className="data-[state=active]:bg-cyan-500 data-[state=active]:text-black text-xs font-bold rounded-lg px-4 h-full">
+              All Shoots ({requests.length})
             </TabsTrigger>
           </TabsList>
         </Tabs>
@@ -176,7 +186,7 @@ export default function AdminApexPage() {
         <div className="relative w-full md:w-72">
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-neutral-500" />
           <Input
-            placeholder="Search by event or organizer..."
+            placeholder="Search by event, host, or venue..."
             value={searchTerm}
             onChange={(e) => setSearchTerm(e.target.value)}
             className="pl-10 border-white/5 bg-black/20 text-white rounded-xl placeholder-neutral-600 focus:border-cyan-500/30 text-sm h-11"
@@ -188,14 +198,14 @@ export default function AdminApexPage() {
       {loading ? (
         <div className="flex flex-col items-center justify-center py-20 gap-3">
           <Loader2 className="h-10 w-10 text-cyan-400 animate-spin" />
-          <p className="text-sm text-neutral-500">Loading requests pipeline...</p>
+          <p className="text-sm text-neutral-500">Loading shoot assignments...</p>
         </div>
       ) : filteredRequests.length === 0 ? (
         <Card className="border border-dashed border-white/5 bg-black/20 rounded-2xl p-12 text-center">
-          <Send className="h-12 w-12 text-neutral-600 mx-auto mb-4" />
-          <h3 className="text-lg font-bold text-white mb-1">No Requests Found</h3>
+          <Camera className="h-12 w-12 text-neutral-600 mx-auto mb-4" />
+          <h3 className="text-lg font-bold text-white mb-1">No Shoots Found</h3>
           <p className="text-sm text-neutral-500 max-w-sm mx-auto">
-            There are no coverage requests currently in the "{statusTab}" pipeline.
+            There are no event coverage shoots matching your search or filters. Click "Schedule Event Shoot" to register one.
           </p>
         </Card>
       ) : (
@@ -205,10 +215,10 @@ export default function AdminApexPage() {
               <table className="w-full text-left border-collapse">
                 <thead>
                   <tr className="border-b border-white/5 text-xs font-bold uppercase tracking-wider text-neutral-400 bg-white/[0.01]">
-                    <th className="py-4 px-6">Event Info</th>
-                    <th className="py-4 px-6">Organizer</th>
-                    <th className="py-4 px-6">Event Date</th>
-                    <th className="py-4 px-6">Crews Assigned</th>
+                    <th className="py-4 px-6">Event Shoot</th>
+                    <th className="py-4 px-6">Host / Dept</th>
+                    <th className="py-4 px-6">Shoot Date</th>
+                    <th className="py-4 px-6">Assigned Crew</th>
                     <th className="py-4 px-6">Status</th>
                     <th className="py-4 px-6 text-right">Actions</th>
                   </tr>
@@ -220,9 +230,16 @@ export default function AdminApexPage() {
                       <td className="py-4 px-6 max-w-xs">
                         <div className="min-w-0">
                           <h4 className="font-bold text-white truncate leading-snug">{req.event_name}</h4>
-                          <span className="text-[10px] text-neutral-500 font-bold uppercase tracking-wider block mt-1">
-                            {req.coverage_type} coverage
-                          </span>
+                          <div className="flex items-center gap-2 mt-1">
+                            <span className="text-[10px] text-neutral-500 font-bold uppercase tracking-wider">
+                              {req.coverage_type} coverage
+                            </span>
+                            {req.venue && (
+                              <span className="text-[10px] text-neutral-400 truncate flex items-center gap-0.5">
+                                • <MapPin className="h-2.5 w-2.5 inline" /> {req.venue}
+                              </span>
+                            )}
+                          </div>
                         </div>
                       </td>
 
@@ -232,7 +249,7 @@ export default function AdminApexPage() {
                           {req.organizer_name}
                         </span>
                         <span className="text-[10px] text-neutral-500 block leading-none">
-                          {req.department || 'No department'}
+                          {req.department || 'Club Internal'}
                         </span>
                       </td>
 
@@ -240,17 +257,24 @@ export default function AdminApexPage() {
                       <td className="py-4 px-6 text-neutral-300">
                         <div className="flex items-center gap-1.5 text-xs">
                           <Calendar className="h-4 w-4 text-cyan-400 shrink-0" />
-                          {new Date(req.event_date).toLocaleDateString(undefined, {
-                            day: 'numeric',
-                            month: 'short',
-                            year: 'numeric'
-                          })}
+                          <span>
+                            {new Date(req.event_date).toLocaleDateString(undefined, {
+                              day: 'numeric',
+                              month: 'short',
+                              year: 'numeric'
+                            })}
+                          </span>
                         </div>
+                        {req.event_time && (
+                          <span className="text-[10px] text-neutral-500 block mt-0.5">
+                            {req.event_time} {req.end_time ? `- ${req.end_time}` : ''}
+                          </span>
+                        )}
                       </td>
 
                       {/* Assigned crews count */}
                       <td className="py-4 px-6">
-                        <div className="flex items-center gap-1 text-neutral-300 text-xs">
+                        <div className="flex items-center gap-1.5 text-neutral-300 text-xs">
                           <Users className="h-4 w-4 text-neutral-500" />
                           <span>{req.team_count} crew member{req.team_count !== 1 ? 's' : ''}</span>
                         </div>
@@ -272,6 +296,7 @@ export default function AdminApexPage() {
                                 size="icon"
                                 variant="ghost"
                                 className="h-8 w-8 hover:bg-green-500/10 text-neutral-400 hover:text-green-500 rounded-lg"
+                                title="Approve Request"
                               >
                                 <Check className="h-4 w-4" />
                               </Button>
@@ -281,14 +306,16 @@ export default function AdminApexPage() {
                                 size="icon"
                                 variant="ghost"
                                 className="h-8 w-8 hover:bg-red-500/10 text-neutral-400 hover:text-red-500 rounded-lg"
+                                title="Reject Request"
                               >
                                 <X className="h-4 w-4" />
                               </Button>
                             </>
                           )}
-                          <Button asChild size="icon" variant="ghost" className="h-8 w-8 hover:bg-cyan-500/10 hover:text-cyan-400 rounded-lg text-neutral-400">
+                          <Button asChild size="sm" variant="ghost" className="h-8 px-3 hover:bg-cyan-500/10 hover:text-cyan-400 rounded-lg text-neutral-400 text-xs font-bold gap-1">
                             <Link href={`/admin/apex/${req.id}`}>
-                              <Eye className="h-4 w-4" />
+                              <Eye className="h-3.5 w-3.5" />
+                              Manage
                             </Link>
                           </Button>
                         </div>

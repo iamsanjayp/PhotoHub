@@ -30,8 +30,10 @@ import {
   Loader2,
   HardDrive,
   UserCheck,
-  ExternalLink
+  ExternalLink,
+  Camera
 } from 'lucide-react'
+import { MemberSearchCombobox } from './member-search-combobox'
 import { toast } from 'sonner'
 import { cn } from '@/lib/utils'
 
@@ -324,6 +326,41 @@ export default function ApexAdminDetail({
                   </Card>
                 ) : (
                   <div className="space-y-3">
+                    {(() => {
+                      const shootEquipmentAssignment = (request.assignments || []).find((a: any) => a.equipment)
+                      const shootEquipment = shootEquipmentAssignment?.equipment
+                      const cameraCustodian = shootEquipmentAssignment?.profiles
+                      if (!shootEquipment) return null
+
+                      return (
+                        <Card className="border border-cyan-500/20 bg-cyan-500/5 p-4 flex items-center justify-between gap-4 rounded-xl">
+                          <div className="flex items-center gap-3">
+                            <div className="h-10 w-10 rounded-xl bg-cyan-500/10 border border-cyan-500/20 flex items-center justify-center shrink-0">
+                              <Camera className="h-5 w-5 text-cyan-400" />
+                            </div>
+                            <div>
+                              <div className="flex items-center gap-2">
+                                <span className="font-bold text-white text-sm">Allocated Shoot Gear: {shootEquipment.name}</span>
+                                <Badge className="bg-cyan-500/20 text-cyan-300 border-none text-[9px] uppercase tracking-wider">
+                                  {shootEquipment.type}
+                                </Badge>
+                              </div>
+                              <div className="text-xs text-neutral-400 flex items-center gap-2 mt-0.5 flex-wrap">
+                                <span>Model: {shootEquipment.model || shootEquipment.type}</span>
+                                <span>•</span>
+                                <span>Serial: {shootEquipment.serial_number || 'N/A'}</span>
+                                {cameraCustodian && (
+                                  <>
+                                    <span>•</span>
+                                    <span className="text-cyan-300 font-semibold">Custodian: {cameraCustodian.full_name}</span>
+                                  </>
+                                )}
+                              </div>
+                            </div>
+                          </div>
+                        </Card>
+                      )
+                    })()}
                     {request.assignments.map((assignment: any) => (
                       <Card key={assignment.id} className="border-white/5 bg-black/30 p-4 flex flex-col sm:flex-row justify-between sm:items-center gap-4">
                         <div className="flex items-center gap-3">
@@ -390,18 +427,14 @@ export default function ApexAdminDetail({
                   <form onSubmit={handleAssignMember} className="space-y-4">
                     {/* Select Member */}
                     <div className="space-y-1.5">
-                      <Label htmlFor="member" className="text-neutral-300 font-semibold text-xs uppercase tracking-wider">Select Member</Label>
-                      <select
-                        id="member"
-                        value={selectedMemberId}
-                        onChange={(e) => setSelectedMemberId(e.target.value)}
-                        className="w-full border border-white/5 bg-neutral-950 text-white rounded-xl px-3 py-2 text-sm focus:border-cyan-500/30 h-11 focus:outline-none"
-                      >
-                        <option value="">Select teammate...</option>
-                        {members.map(m => (
-                          <option key={m.id} value={m.id}>{m.full_name}</option>
-                        ))}
-                      </select>
+                      <Label className="text-neutral-300 font-semibold text-xs uppercase tracking-wider">Select Member</Label>
+                      <MemberSearchCombobox
+                        members={members}
+                        selectedMemberId={selectedMemberId}
+                        disabledMemberIds={(request.assignments || []).map((a: any) => a.user_id)}
+                        onSelectMember={(mem) => setSelectedMemberId(mem ? mem.id : '')}
+                        placeholder="Search teammate by name, dept, roll #..."
+                      />
                     </div>
 
                     {/* Role Selection */}

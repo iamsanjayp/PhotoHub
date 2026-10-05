@@ -46,7 +46,15 @@ export default async function DashboardPage() {
   const announcements = (announcementsResult.data || []).slice(0, 3)
   const pointsData = pointsResult.data || { total_points: 0, monthly_points: 0, rank: 999 }
   const activeAssignments = (assignmentsResult.data || [])
-    .filter((a: any) => a.status === 'pending' || a.status === 'accepted')
+    .filter((a: any) => {
+      const req = a.apex_requests
+      if (!req) return false
+      if (['completed', 'delivered', 'rejected'].includes(req.status)) return false
+      if (a.status === 'rejected') return false
+      const hasCheckedOut = a.apex_attendance?.some((att: any) => !!att.checked_out_at)
+      if (hasCheckedOut) return false
+      return a.status === 'pending' || a.status === 'accepted'
+    })
     .slice(0, 3)
 
   return (

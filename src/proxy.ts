@@ -2,7 +2,7 @@ import { type NextRequest, NextResponse } from 'next/server'
 import { updateSession } from '@/lib/supabase/middleware'
 
 // Routes that don't require authentication
-const publicRoutes = ['/', '/login', '/unauthorized', '/apex-request', '/auth/callback', '/auth/confirm', '/auth/v1', '/rest/v1', '/storage/v1']
+const publicRoutes = ['/', '/login', '/unauthorized', '/suspended', '/apex-request', '/auth/callback', '/auth/confirm', '/auth/v1', '/rest/v1', '/storage/v1']
 
 // Routes that require admin or leader role
 const adminRoutes = ['/admin']
@@ -53,40 +53,47 @@ export async function proxy(request: NextRequest) {
     return NextResponse.redirect(`${origin}/unauthorized`)
   }
 
+  // Check user profile for active status and role
+  let { data: profile } = await supabase
+    .from('profiles')
+    .select('role, is_active')
+    .eq('id', user.id)
+    .single()
+
+  if (!profile) {
+    const internalUrl = process.env.SUPABASE_INTERNAL_URL || 'http://kong:8000'
+    const serviceKey = process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || ''
+    try {
+      const res = await fetch(`${internalUrl}/rest/v1/profiles?select=role,is_active&id=eq.${user.id}`, {
+        headers: {
+          apikey: serviceKey,
+          Authorization: `Bearer ${serviceKey}`
+        }
+      })
+      if (res.ok) {
+        const rows = await res.json()
+        if (rows && rows.length > 0) {
+          profile = rows[0]
+        }
+      }
+    } catch (err) {
+      console.error('Middleware profile check fallback error:', err)
+    }
+  }
+
+  // Immediately block and sign out suspended users
+  if (profile && profile.is_active === false) {
+    await supabase.auth.signOut()
+    const origin = getPublicOrigin()
+    return NextResponse.redirect(`${origin}/suspended`)
+  }
+
   // Check admin routes
   const isAdminRoute = adminRoutes.some(
     (route) => pathname === route || pathname.startsWith(`${route}/`)
   )
 
   if (isAdminRoute) {
-    // Fetch user role from profiles
-    let { data: profile } = await supabase
-      .from('profiles')
-      .select('role')
-      .eq('id', user.id)
-      .single()
-
-    if (!profile) {
-      const internalUrl = process.env.SUPABASE_INTERNAL_URL || 'http://kong:8000'
-      const serviceKey = process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || ''
-      try {
-        const res = await fetch(`${internalUrl}/rest/v1/profiles?select=role&id=eq.${user.id}`, {
-          headers: {
-            apikey: serviceKey,
-            Authorization: `Bearer ${serviceKey}`
-          }
-        })
-        if (res.ok) {
-          const rows = await res.json()
-          if (rows && rows.length > 0) {
-            profile = rows[0]
-          }
-        }
-      } catch (err) {
-        console.error('Middleware admin check fallback error:', err)
-      }
-    }
-
     if (!profile || !['admin', 'board_member', 'leader'].includes(profile.role)) {
       const origin = getPublicOrigin()
       return NextResponse.redirect(`${origin}/dashboard`)

@@ -18,7 +18,7 @@ export default async function DashboardLayout({
   }
 
   if (!profile.is_active) {
-    redirect('/unauthorized')
+    redirect('/suspended')
   }
 
   return (

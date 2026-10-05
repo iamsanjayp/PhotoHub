@@ -44,7 +44,11 @@ export async function uploadMedia(formData: FormData) {
           storage: 'google_drive',
         }
       } catch (driveError: any) {
-        console.error('Google Drive upload failed, falling back to local disk:', driveError)
+        console.error('❌ Google Drive upload failed, falling back to local disk:', {
+          message: driveError?.message,
+          code: driveError?.code,
+          details: driveError?.response?.data || driveError?.errors,
+        })
       }
     }
 

@@ -48,7 +48,7 @@ export default function AdminSidebar({ profile, isMobile = false }: { profile: P
       icon: Calendar,
     },
     {
-      label: 'Apex Requests',
+      label: 'Event Shoots',
       href: '/admin/apex',
       icon: ClipboardList,
     },

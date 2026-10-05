@@ -36,6 +36,8 @@ export const createInternalApexSchema = z.object({
   coverage_type: z.enum(['photography', 'videography', 'both']).default('both'),
   notes: z.string().max(1000).optional().nullable().or(z.literal('')),
   initial_status: z.enum(['approved', 'assigned', 'ongoing']).optional(),
+  equipment_id: z.string().optional().nullable().or(z.literal('')),
+  camera_custodian_id: z.string().optional().nullable().or(z.literal('')),
   crew: z.array(crewAssignmentSchema).optional().default([]),
 })
 

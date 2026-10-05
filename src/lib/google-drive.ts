@@ -4,14 +4,19 @@ import { Readable } from 'stream'
 import sharp from 'sharp'
 import path from 'path'
 
+function cleanEnvValue(val: string | undefined): string {
+  if (!val) return ''
+  return val.trim().replace(/^["']|["']$/g, '').trim()
+}
+
 /**
  * Checks whether Google Drive credentials are configured in the environment.
  */
 export function isGoogleDriveConfigured(): boolean {
   const jsonKey = process.env.GOOGLE_SERVICE_ACCOUNT_KEY
-  const email = process.env.GOOGLE_SERVICE_ACCOUNT_EMAIL || process.env.GOOGLE_DRIVE_CLIENT_EMAIL
-  const key = process.env.GOOGLE_SERVICE_ACCOUNT_PRIVATE_KEY || process.env.GOOGLE_DRIVE_PRIVATE_KEY
-  const folderId = process.env.GOOGLE_DRIVE_FOLDER_ID?.trim()
+  const email = cleanEnvValue(process.env.GOOGLE_SERVICE_ACCOUNT_EMAIL || process.env.GOOGLE_DRIVE_CLIENT_EMAIL)
+  const key = cleanEnvValue(process.env.GOOGLE_SERVICE_ACCOUNT_PRIVATE_KEY || process.env.GOOGLE_DRIVE_PRIVATE_KEY)
+  const folderId = cleanEnvValue(process.env.GOOGLE_DRIVE_FOLDER_ID)
   return !!((jsonKey || (email && key)) && folderId)
 }
 
@@ -36,8 +41,8 @@ function getGoogleAuth(): GoogleAuth {
     }
   }
 
-  const clientEmail = process.env.GOOGLE_SERVICE_ACCOUNT_EMAIL || process.env.GOOGLE_DRIVE_CLIENT_EMAIL
-  let privateKey = process.env.GOOGLE_SERVICE_ACCOUNT_PRIVATE_KEY || process.env.GOOGLE_DRIVE_PRIVATE_KEY
+  const clientEmail = cleanEnvValue(process.env.GOOGLE_SERVICE_ACCOUNT_EMAIL || process.env.GOOGLE_DRIVE_CLIENT_EMAIL)
+  let privateKey = cleanEnvValue(process.env.GOOGLE_SERVICE_ACCOUNT_PRIVATE_KEY || process.env.GOOGLE_DRIVE_PRIVATE_KEY)
 
   if (!clientEmail || !privateKey) {
     throw new Error('Google Drive credentials are not fully configured in environment variables.')
@@ -115,7 +120,7 @@ export async function uploadToGoogleDrive(
   const auth = getGoogleAuth()
   const driveClient: drive_v3.Drive = drive({ version: 'v3', auth })
 
-  const folderId = process.env.GOOGLE_DRIVE_FOLDER_ID?.trim()
+  const folderId = cleanEnvValue(process.env.GOOGLE_DRIVE_FOLDER_ID)
 
   // 1. Optimize images automatically before upload to save bandwidth & speed up loading
   const { buffer: uploadBuffer, filename, mimeType: finalMimeType } = await optimizeMediaBuffer(
@@ -173,5 +178,35 @@ export async function uploadToGoogleDrive(
     thumbnailUrl,
     filename,
     mediaType: isVideo ? 'video' : 'image',
+  }
+}
+
+/**
+ * Deletes or trashes a file from Google Drive (supports Shared Drives).
+ */
+export async function deleteFromGoogleDrive(fileId: string): Promise<boolean> {
+  if (!fileId) return false
+  try {
+    const auth = getGoogleAuth()
+    const driveClient: drive_v3.Drive = drive({ version: 'v3', auth })
+
+    try {
+      await driveClient.files.delete({
+        fileId,
+        supportsAllDrives: true,
+      })
+      return true
+    } catch (delErr: any) {
+      // If direct delete fails (e.g. requires organizer permission in shared drive), attempt trashing
+      await driveClient.files.update({
+        fileId,
+        requestBody: { trashed: true },
+        supportsAllDrives: true,
+      })
+      return true
+    }
+  } catch (err: any) {
+    console.warn(`Failed to delete or trash file ${fileId} from Drive:`, err?.message)
+    return false
   }
 }

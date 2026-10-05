@@ -60,7 +60,7 @@ export default function MobileNav({ profile }: { profile: Profile }) {
   const adminPrimaryItems = [
     { label: 'Admin', href: '/admin', icon: LayoutDashboard },
     { label: 'Mod', href: '/admin/feed-moderation', icon: Inbox },
-    { label: 'Apex', href: '/admin/apex', icon: ClipboardList },
+    { label: 'Shoots', href: '/admin/apex', icon: ClipboardList },
     { label: 'Events', href: '/admin/events', icon: Calendar },
   ]
 

@@ -5,6 +5,11 @@ import { promises as fs } from 'fs'
 import { existsSync } from 'fs'
 import path from 'path'
 
+function cleanEnvValue(val: string | undefined): string {
+  if (!val) return ''
+  return val.trim().replace(/^["']|["']$/g, '').trim()
+}
+
 function getGoogleAuth(): GoogleAuth {
   const jsonKey = process.env.GOOGLE_SERVICE_ACCOUNT_KEY
   if (jsonKey) {
@@ -19,8 +24,8 @@ function getGoogleAuth(): GoogleAuth {
     }
   }
 
-  const clientEmail = process.env.GOOGLE_SERVICE_ACCOUNT_EMAIL || process.env.GOOGLE_DRIVE_CLIENT_EMAIL
-  let privateKey = process.env.GOOGLE_SERVICE_ACCOUNT_PRIVATE_KEY || process.env.GOOGLE_DRIVE_PRIVATE_KEY
+  const clientEmail = cleanEnvValue(process.env.GOOGLE_SERVICE_ACCOUNT_EMAIL || process.env.GOOGLE_DRIVE_CLIENT_EMAIL)
+  let privateKey = cleanEnvValue(process.env.GOOGLE_SERVICE_ACCOUNT_PRIVATE_KEY || process.env.GOOGLE_DRIVE_PRIVATE_KEY)
 
   if (!clientEmail || !privateKey) {
     throw new Error('Google Drive credentials are not configured.')

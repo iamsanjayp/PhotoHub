@@ -121,12 +121,82 @@ export async function getEquipment() {
     const supabase = await createAdminClient()
     const { data, error } = await supabase
       .from('equipment')
-      .select('*')
+      .select(`
+        *,
+        equipment_assignments (
+          id,
+          equipment_id,
+          assigned_to,
+          checked_out_at,
+          returned_at,
+          apex_request_id,
+          apex_requests (
+            id,
+            event_name,
+            event_date,
+            status
+          ),
+          profiles:assigned_to (
+            id,
+            full_name,
+            role
+          )
+        )
+      `)
       .order('name', { ascending: true })
 
     if (error) throw error
 
-    return { data }
+    const todayStr = new Date().toISOString().split('T')[0]
+    const itemsToHeal: string[] = []
+
+    const enhanced = (data || []).map((item: any) => {
+      const activeOrUpcoming = (item.equipment_assignments || []).filter((ea: any) => {
+        if (ea.returned_at) return false
+        const req = ea.apex_requests
+        if (!req) return !ea.returned_at
+        return !['completed', 'delivered', 'rejected'].includes(req.status)
+      })
+
+      const ongoingAssignment = activeOrUpcoming.find(
+        (ea: any) => ea.apex_requests?.status === 'ongoing' || (!ea.apex_request_id && !ea.returned_at)
+      )
+
+      const upcomingAssignment = activeOrUpcoming.find(
+        (ea: any) => ea.apex_requests && ea.apex_requests.event_date >= todayStr && ['approved', 'assigned'].includes(ea.apex_requests.status)
+      )
+
+      const isActuallyInUse = !!ongoingAssignment
+
+      // Self-heal: If database says 'assigned', but no active ongoing shoot exists, mark for healing
+      if (item.status === 'assigned' && !isActuallyInUse && item.status !== 'maintenance' && item.status !== 'retired') {
+        itemsToHeal.push(item.id)
+        item.status = 'available'
+      }
+
+      return {
+        ...item,
+        is_currently_in_use: isActuallyInUse,
+        active_assignment: ongoingAssignment || null,
+        upcoming_reservation: upcomingAssignment
+          ? {
+              event_name: upcomingAssignment.apex_requests?.event_name,
+              event_date: upcomingAssignment.apex_requests?.event_date,
+              holder_name: upcomingAssignment.profiles?.full_name,
+            }
+          : null,
+      }
+    })
+
+    // Auto-heal stuck equipment records in background
+    if (itemsToHeal.length > 0) {
+      await supabase
+        .from('equipment')
+        .update({ status: 'available' })
+        .in('id', itemsToHeal)
+    }
+
+    return { data: enhanced }
   } catch (error: any) {
     console.error('Error in getEquipment:', error)
     return { error: error.message || 'Failed to fetch equipment' }

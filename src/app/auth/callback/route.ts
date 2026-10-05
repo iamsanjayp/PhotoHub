@@ -71,6 +71,47 @@ export async function GET(request: NextRequest) {
         await cleanClient.auth.signOut()
         return unauthorizedResponse
       }
+
+      // Check if user is suspended/deactivated
+      const internalUrl = process.env.SUPABASE_INTERNAL_URL || 'http://kong:8000'
+      const serviceKey = process.env.SUPABASE_SERVICE_ROLE_KEY || ''
+      try {
+        const profileRes = await fetch(`${internalUrl}/rest/v1/profiles?select=is_active&id=eq.${data.user.id}`, {
+          headers: {
+            apikey: serviceKey,
+            Authorization: `Bearer ${serviceKey}`
+          }
+        })
+        if (profileRes.ok) {
+          const profiles = await profileRes.json()
+          if (profiles && profiles.length > 0 && profiles[0].is_active === false) {
+            const suspendedResponse = NextResponse.redirect(`${origin}/suspended`)
+            const cleanClient = createServerClient(
+              url,
+              anonKey,
+              {
+                global: {
+                  fetch: customFetch,
+                },
+                cookies: {
+                  getAll() {
+                    return request.cookies.getAll()
+                  },
+                  setAll(cookiesToSet) {
+                    cookiesToSet.forEach(({ name, value, options }) => {
+                      suspendedResponse.cookies.set(name, value, options)
+                    })
+                  },
+                },
+              }
+            )
+            await cleanClient.auth.signOut()
+            return suspendedResponse
+          }
+        }
+      } catch (err) {
+        console.error('Error checking profile is_active in callback:', err)
+      }
       
       return response
     }

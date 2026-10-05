@@ -75,7 +75,11 @@ export async function POST(request: NextRequest) {
           storage: 'google_drive',
         })
       } catch (driveError: any) {
-        console.error('Google Drive upload failed, attempting local fallback:', driveError)
+        console.error('❌ Google Drive upload failed, attempting local fallback:', {
+          message: driveError?.message,
+          code: driveError?.code,
+          details: driveError?.response?.data || driveError?.errors,
+        })
         // If Drive upload errors out, fall back to local disk so user is never blocked
       }
     }

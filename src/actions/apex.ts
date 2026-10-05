@@ -242,14 +242,23 @@ export async function assignTeamMember(requestId: string, userId: string, role: 
 
     if (assignError) throw assignError
 
-    // If equipment is selected, mark it as assigned
-    if (equipmentId) {
-      await supabase
-        .from('equipment')
-        .update({ status: 'assigned' })
-        .eq('id', equipmentId)
+    // Auto update request status to 'assigned' if it was approved
+    const { data: request } = await supabase
+      .from('apex_requests')
+      .select('status')
+      .eq('id', requestId)
+      .single()
 
-      // Log equipment checkout
+    // If equipment is selected, log reservation; only mark physically assigned if shoot is ongoing
+    if (equipmentId) {
+      if (request?.status === 'ongoing') {
+        await supabase
+          .from('equipment')
+          .update({ status: 'assigned' })
+          .eq('id', equipmentId)
+      }
+
+      // Log equipment assignment/reservation
       await supabase
         .from('equipment_assignments')
         .insert({
@@ -258,15 +267,9 @@ export async function assignTeamMember(requestId: string, userId: string, role: 
           assigned_by: profile.id,
           apex_request_id: requestId,
           checked_out_at: new Date().toISOString(),
+          notes: request?.status === 'ongoing' ? 'In Use' : 'Reserved for Shoot',
         })
     }
-
-    // Auto update request status to 'assigned' if it was approved
-    const { data: request } = await supabase
-      .from('apex_requests')
-      .select('status')
-      .eq('id', requestId)
-      .single()
 
     if (request && request.status === 'approved') {
       await supabase
@@ -455,6 +458,20 @@ export async function logApexAttendance(assignmentId: string, checkedInAt: strin
           .from('apex_requests')
           .update({ status: 'ongoing', updated_at: new Date().toISOString() })
           .eq('id', assignment.request_id)
+
+        // Mark allocated equipment as actively assigned / in use on shoot day
+        const { data: shootGear } = await adminClient
+          .from('apex_assignments')
+          .select('equipment_id')
+          .eq('request_id', assignment.request_id)
+
+        const eqIds = (shootGear || []).map((g: any) => g.equipment_id).filter(Boolean)
+        if (eqIds.length > 0) {
+          await adminClient
+            .from('equipment')
+            .update({ status: 'assigned' })
+            .in('id', eqIds)
+        }
       }
 
       // If user is checking out, award them points if not already awarded
@@ -796,7 +813,7 @@ export async function getMyAssignments() {
             user_id,
             role,
             status,
-            equipment (id, name, model, serial_number),
+            equipment (id, name, model, serial_number, type),
             profiles (id, full_name, avatar_url, role)
           )
         ),
@@ -857,6 +874,44 @@ export async function createInternalApex(input: CreateInternalApexInput) {
 
     if (reqError) throw reqError
 
+    // Determine primary shoot equipment and custodian if provided at shoot level
+    const shootEquipmentId = (validated.equipment_id && validated.equipment_id !== 'none' && validated.equipment_id.trim() !== '')
+      ? validated.equipment_id.trim()
+      : null
+
+    let designatedCustodianId = validated.camera_custodian_id || null
+
+    // If shoot equipment is specified, find or validate the custodian
+    if (shootEquipmentId) {
+      const { data: eq } = await adminClient
+        .from('equipment')
+        .select('type, name')
+        .eq('id', shootEquipmentId)
+        .single()
+
+      if (!designatedCustodianId) {
+        // Pick first crew member eligible for camera, or current user if eligible
+        if (canAccessCamera(profile.role)) {
+          designatedCustodianId = profile.id
+        } else if (hasCrew) {
+          const eligible = validated.crew.find((c) => c.user_id)
+          if (eligible) designatedCustodianId = eligible.user_id
+        }
+      }
+
+      if (eq?.type === 'camera' && designatedCustodianId) {
+        const { data: custodian } = await adminClient
+          .from('profiles')
+          .select('role, full_name')
+          .eq('id', designatedCustodianId)
+          .single()
+
+        if (!custodian || !canAccessCamera(custodian.role)) {
+          throw new Error(`Camera equipment (${eq.name}) can only be assigned to a Camera Holder (Admin, Board, or Committee Member).`)
+        }
+      }
+    }
+
     // Handle crew assignments and equipment checkouts
     if (hasCrew) {
       const assignedUserIds = new Set<string>()
@@ -867,9 +922,16 @@ export async function createInternalApex(input: CreateInternalApexInput) {
         }
         assignedUserIds.add(crewMember.user_id)
 
-        const cleanEquipmentId = (crewMember.equipment_id && crewMember.equipment_id !== 'none' && crewMember.equipment_id.trim() !== '') ? crewMember.equipment_id : null
+        // Equipment for this row: either explicitly provided or designated via shootEquipmentId
+        let cleanEquipmentId = (crewMember.equipment_id && crewMember.equipment_id !== 'none' && crewMember.equipment_id.trim() !== '')
+          ? crewMember.equipment_id.trim()
+          : null
 
-        // If equipment is selected, verify camera access permissions
+        if (!cleanEquipmentId && shootEquipmentId && crewMember.user_id === designatedCustodianId) {
+          cleanEquipmentId = shootEquipmentId
+        }
+
+        // Verify camera access permissions if equipment is attached
         if (cleanEquipmentId) {
           const { data: eq } = await adminClient
             .from('equipment')
@@ -904,12 +966,15 @@ export async function createInternalApex(input: CreateInternalApexInput) {
 
         if (assignError) throw assignError
 
-        // If equipment is selected, checkout
+        // If equipment is selected, log reservation or active checkout
         if (cleanEquipmentId) {
-          await adminClient
-            .from('equipment')
-            .update({ status: 'assigned' })
-            .eq('id', cleanEquipmentId)
+          // Only mark equipment physically 'assigned' if the shoot is ALREADY ongoing right now
+          if (initialStatus === 'ongoing') {
+            await adminClient
+              .from('equipment')
+              .update({ status: 'assigned' })
+              .eq('id', cleanEquipmentId)
+          }
 
           await adminClient
             .from('equipment_assignments')
@@ -919,6 +984,7 @@ export async function createInternalApex(input: CreateInternalApexInput) {
               assigned_by: profile.id,
               apex_request_id: request.id,
               checked_out_at: new Date().toISOString(),
+              notes: initialStatus === 'ongoing' ? 'In Use' : 'Reserved for Shoot',
             })
         }
       }

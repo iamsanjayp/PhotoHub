@@ -22,7 +22,7 @@ export default async function AdminLayout({
   }
 
   if (!profile.is_active) {
-    redirect('/unauthorized')
+    redirect('/suspended')
   }
 
   return (
