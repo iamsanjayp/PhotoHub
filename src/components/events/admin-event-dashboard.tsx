@@ -21,13 +21,16 @@ import {
   deleteMissedAttendanceRecord
 } from '@/actions/missed-attendance'
 import { exportMissedAttendanceToXlsx } from '@/lib/export-xlsx'
+import { format } from 'date-fns'
 import {
   Dialog,
   DialogContent,
   DialogHeader,
   DialogTitle,
   DialogDescription,
+  DialogFooter,
 } from '@/components/ui/dialog'
+import { Avatar, AvatarImage, AvatarFallback } from '@/components/ui/avatar'
 import { 
   scoreSubmission, 
   updateSubmissionStatus 
@@ -58,7 +61,10 @@ import {
   Plus,
   GraduationCap,
   Copy,
-  CheckCircle2
+  CheckCircle2,
+  ThumbsUp,
+  ThumbsDown,
+  FileText
 } from 'lucide-react'
 import { toast } from 'sonner'
 import { cn } from '@/lib/utils'
@@ -106,10 +112,13 @@ export default function AdminEventDashboard({
   const [missedSelectedHours, setMissedSelectedHours] = useState<number[]>([1])
   const [missedNotes, setMissedNotes] = useState('')
   
-  // Scoring state
+  // Scoring & Lightbox state (matching challenges modal)
   const [editingSubmissionId, setEditingSubmissionId] = useState<string | null>(null)
   const [scoreVal, setScoreVal] = useState<number>(0)
   const [feedbackVal, setFeedbackVal] = useState<string>('')
+  const [previewImage, setPreviewImage] = useState<string | null>(null)
+  const [scoreDialogOpen, setScoreDialogOpen] = useState(false)
+  const [selectedSubmissionForScore, setSelectedSubmissionForScore] = useState<any>(null)
 
   // Winners selection state
   const [selectedWinnerSubmissionIds, setSelectedWinnerSubmissionIds] = useState<string[]>(
@@ -294,10 +303,39 @@ export default function AdminEventDashboard({
   }
 
   // Submission scoring
-  const handleStartScoring = (sub: any) => {
-    setEditingSubmissionId(sub.id)
-    setScoreVal(sub.score || 0)
+  const openScoreDialog = (sub: any) => {
+    setSelectedSubmissionForScore(sub)
+    setScoreVal(sub.score ?? 0)
     setFeedbackVal(sub.feedback || '')
+    setScoreDialogOpen(true)
+  }
+
+  const handleSaveModalScore = async () => {
+    if (!selectedSubmissionForScore) return
+    const score = Number(scoreVal)
+    if (isNaN(score) || score < 0 || score > 100) {
+      toast.error('Score must be between 0 and 100')
+      return
+    }
+
+    startTransition(async () => {
+      const res = await scoreSubmission(selectedSubmissionForScore.id, score, feedbackVal)
+      if (res.error) {
+        toast.error(res.error)
+      } else {
+        toast.success('Submission scored successfully')
+        setSubmissions(prev =>
+          prev.map(s => s.id === selectedSubmissionForScore.id ? { ...s, score: score, feedback: feedbackVal, status: s.status === 'pending' ? 'approved' : s.status } : s)
+        )
+        setScoreDialogOpen(false)
+        setSelectedSubmissionForScore(null)
+        router.refresh()
+      }
+    })
+  }
+
+  const handleStartScoring = (sub: any) => {
+    openScoreDialog(sub)
   }
 
   const handleSaveScore = async (submissionId: string) => {
@@ -791,11 +829,19 @@ export default function AdminEventDashboard({
               </p>
             </Card>
           ) : (
-            <div className="grid grid-cols-1 xl:grid-cols-3 gap-6">
-              {/* Left List */}
-              <div className="xl:col-span-2 space-y-4">
-                <div className="flex items-center justify-between px-1">
-                  <h3 className="text-md font-bold text-white">Participant Entries ({submissions.length})</h3>
+            <Card className="border-white/5 bg-black/40 backdrop-blur-xl rounded-2xl overflow-hidden shadow-xl">
+              <CardHeader className="flex flex-col sm:flex-row justify-between sm:items-center gap-4 border-b border-white/5 p-4 sm:p-6">
+                <div>
+                  <CardTitle className="text-lg font-bold text-white flex items-center gap-2">
+                    <Trophy className="h-5 w-5 text-cyan-400" />
+                    Participant Submissions
+                    <span className="text-sm font-normal text-neutral-500">({submissions.length})</span>
+                  </CardTitle>
+                  <CardDescription className="text-xs text-neutral-400 mt-1">
+                    Review and grade participant submissions. Click thumbnails to inspect full images.
+                  </CardDescription>
+                </div>
+                <div className="flex flex-wrap items-center gap-2">
                   <ExportResultsButton
                     type="event"
                     id={event.id}
@@ -806,192 +852,327 @@ export default function AdminEventDashboard({
                     exportMode="submissions"
                     size="sm"
                     variant="outline"
-                    className="border-white/10 hover:bg-white/5 text-white text-xs font-bold rounded-lg px-3 py-1.5 h-8 flex items-center gap-1.5"
+                    className="border-white/10 hover:bg-white/5 text-white text-xs font-bold rounded-xl px-3 py-1.5 h-9 flex items-center gap-1.5 shadow-sm"
                     label="Export Submissions"
                   />
                 </div>
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                  {submissions.map((sub) => (
-                    <Card 
-                      key={sub.id} 
-                      className={cn(
-                        "border-white/5 bg-black/30 backdrop-blur-md rounded-2xl overflow-hidden flex flex-col justify-between group relative transition-all duration-300 hover:border-cyan-500/20 hover:bg-black/50",
-                        editingSubmissionId === sub.id && "border-cyan-500/30 ring-1 ring-cyan-500/20"
-                      )}
-                    >
-                      {/* Media Body */}
-                      <div className="p-4 space-y-4">
-                        {/* Member Header */}
-                        <div className="flex justify-between items-start gap-2">
-                          <div className="flex items-center gap-2">
-                            <div className="h-7 w-7 rounded-full overflow-hidden bg-neutral-900 border border-white/5">
-                              {sub.profiles?.avatar_url ? (
-                                <img src={sub.profiles.avatar_url} alt="" className="h-full w-full object-cover" />
-                              ) : (
-                                <div className="h-full w-full flex items-center justify-center text-[8px] font-bold text-neutral-500 uppercase">
-                                  {(sub.profiles?.full_name || 'U').slice(0, 2)}
+              </CardHeader>
+              <CardContent className="p-0">
+                {/* Desktop Table View */}
+                <div className="hidden md:block overflow-x-auto">
+                  <table className="w-full text-left border-collapse">
+                    <thead>
+                      <tr className="border-b border-white/5 text-xs font-bold uppercase tracking-wider text-neutral-400 bg-white/[0.01]">
+                        <th className="py-4 px-6">Member</th>
+                        <th className="py-4 px-6">Submitted</th>
+                        <th className="py-4 px-6">Content</th>
+                        <th className="py-4 px-6 text-center">Status</th>
+                        <th className="py-4 px-6 text-center">Score</th>
+                        <th className="py-4 px-6 text-right">Actions</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-white/5 text-sm">
+                      {submissions.map((submission: any) => {
+                        const prof = submission.profiles
+                        const initials = prof
+                          ? (prof.full_name || prof.username || '?')
+                              .split(' ')
+                              .map((w: string) => w[0])
+                              .join('')
+                              .toUpperCase()
+                              .slice(0, 2)
+                          : '?'
+
+                        return (
+                          <tr
+                            key={submission.id}
+                            className="hover:bg-white/[0.015] transition-colors group"
+                          >
+                            {/* Member */}
+                            <td className="py-4 px-6">
+                              <div className="flex items-center gap-3">
+                                <Avatar className="h-8 w-8 border border-white/10">
+                                  <AvatarImage
+                                    src={prof?.avatar_url || ''}
+                                    alt={prof?.full_name || ''}
+                                  />
+                                  <AvatarFallback className="bg-neutral-800 text-neutral-400 text-xs font-bold">
+                                    {initials}
+                                  </AvatarFallback>
+                                </Avatar>
+                                <div className="min-w-0">
+                                  <p className="font-semibold text-white truncate text-sm">
+                                    {prof?.full_name || prof?.username || 'Unknown Member'}
+                                  </p>
+                                  {prof?.username && prof?.full_name && (
+                                    <p className="text-[11px] text-neutral-500 truncate">
+                                      @{prof.username}
+                                    </p>
+                                  )}
                                 </div>
+                              </div>
+                            </td>
+
+                            {/* Date */}
+                            <td className="py-4 px-6">
+                              <p className="text-neutral-300 text-xs">
+                                {format(new Date(submission.created_at), 'MMM d, yyyy')}
+                              </p>
+                              <p className="text-neutral-500 text-[11px]">
+                                {format(new Date(submission.created_at), 'h:mm a')}
+                              </p>
+                            </td>
+
+                            {/* Content Preview with Expandable Lightbox */}
+                            <td className="py-4 px-6">
+                              {submission.content_type === 'image' && submission.content_url ? (
+                                <div className="flex items-center gap-2">
+                                  <button
+                                    type="button"
+                                    onClick={() => setPreviewImage(submission.content_url)}
+                                    className="h-11 w-11 rounded-xl overflow-hidden border border-white/10 bg-neutral-900 shrink-0 cursor-zoom-in hover:opacity-85 transition-opacity ring-1 ring-white/5 hover:ring-cyan-500/40"
+                                    title="Click to expand image"
+                                  >
+                                    <img
+                                      src={submission.content_url}
+                                      alt="Submission Preview"
+                                      className="h-full w-full object-cover"
+                                    />
+                                  </button>
+                                  <div className="flex flex-col">
+                                    <span className="text-[11px] text-neutral-400 flex items-center gap-1 font-medium">
+                                      <ImageIcon className="h-3 w-3 text-cyan-400" />
+                                      Image Entry
+                                    </span>
+                                    {submission.caption && (
+                                      <span className="text-[10px] text-neutral-500 truncate max-w-[150px] italic">
+                                        "{submission.caption}"
+                                      </span>
+                                    )}
+                                  </div>
+                                </div>
+                              ) : submission.external_link || submission.content_url ? (
+                                <a
+                                  href={submission.external_link || submission.content_url}
+                                  target="_blank"
+                                  rel="noopener noreferrer"
+                                  className="inline-flex items-center gap-1.5 text-cyan-400 hover:text-cyan-300 text-xs font-medium transition-colors"
+                                >
+                                  <ExternalLink className="h-3.5 w-3.5" />
+                                  View Link
+                                </a>
+                              ) : submission.caption ? (
+                                <p className="text-neutral-400 text-xs truncate max-w-[180px] italic">
+                                  "{submission.caption}"
+                                </p>
+                              ) : (
+                                <span className="text-neutral-600 text-xs">No content</span>
+                              )}
+                            </td>
+
+                            {/* Status */}
+                            <td className="py-4 px-6 text-center">
+                              <Badge
+                                variant="outline"
+                                className={cn(
+                                  'capitalize text-[10px] font-bold px-2 py-0.5 rounded-full border',
+                                  submission.status === 'approved' && 'bg-green-500/10 text-green-400 border-green-500/20',
+                                  submission.status === 'rejected' && 'bg-red-500/10 text-red-400 border-red-500/20',
+                                  submission.status === 'winner' && 'bg-cyan-500/10 text-cyan-400 border-cyan-500/20',
+                                  submission.status === 'pending' && 'bg-yellow-500/10 text-yellow-400 border-yellow-500/20'
+                                )}
+                              >
+                                {submission.status}
+                              </Badge>
+                            </td>
+
+                            {/* Score */}
+                            <td className="py-4 px-6 text-center">
+                              {submission.score != null ? (
+                                <span className="text-sm font-bold text-cyan-400">
+                                  {submission.score}
+                                  <span className="text-neutral-600 font-normal text-xs">/100</span>
+                                </span>
+                              ) : (
+                                <span className="text-neutral-600 text-xs">—</span>
+                              )}
+                            </td>
+
+                            {/* Actions */}
+                            <td className="py-4 px-6">
+                              <div className="flex items-center justify-end gap-1">
+                                {submission.status !== 'approved' && (
+                                  <Button
+                                    onClick={() => handleUpdateStatus(submission.id, 'approved')}
+                                    disabled={isPending}
+                                    size="icon"
+                                    variant="ghost"
+                                    className="h-8 w-8 hover:bg-green-500/15 text-neutral-400 hover:text-green-400 rounded-lg transition-colors"
+                                    title="Approve Submission"
+                                  >
+                                    <ThumbsUp className="h-4 w-4" />
+                                  </Button>
+                                )}
+                                {submission.status !== 'rejected' && (
+                                  <Button
+                                    onClick={() => handleUpdateStatus(submission.id, 'rejected')}
+                                    disabled={isPending}
+                                    size="icon"
+                                    variant="ghost"
+                                    className="h-8 w-8 hover:bg-red-500/15 text-neutral-400 hover:text-red-400 rounded-lg transition-colors"
+                                    title="Reject Submission"
+                                  >
+                                    <ThumbsDown className="h-4 w-4" />
+                                  </Button>
+                                )}
+                                <Button
+                                  onClick={() => openScoreDialog(submission)}
+                                  size="icon"
+                                  variant="ghost"
+                                  className="h-8 w-8 hover:bg-purple-500/15 text-neutral-400 hover:text-purple-400 rounded-lg transition-colors"
+                                  title="Grade & Feedback"
+                                >
+                                  <Star className="h-4 w-4" />
+                                </Button>
+                              </div>
+                            </td>
+                          </tr>
+                        )
+                      })}
+                    </tbody>
+                  </table>
+                </div>
+
+                {/* Mobile View */}
+                <div className="md:hidden flex flex-col divide-y divide-white/5">
+                  {submissions.map((submission: any) => {
+                    const prof = submission.profiles
+                    const initials = prof
+                      ? (prof.full_name || prof.username || '?')
+                          .split(' ')
+                          .map((w: string) => w[0])
+                          .join('')
+                          .toUpperCase()
+                          .slice(0, 2)
+                      : '?'
+
+                    return (
+                      <div key={submission.id} className="p-4 space-y-4">
+                        <div className="flex items-center justify-between">
+                          <div className="flex items-center gap-3">
+                            <Avatar className="h-9 w-9 border border-white/10">
+                              <AvatarImage src={prof?.avatar_url || ''} alt={prof?.full_name || ''} />
+                              <AvatarFallback className="bg-neutral-800 text-neutral-400 text-xs font-bold">{initials}</AvatarFallback>
+                            </Avatar>
+                            <div className="min-w-0">
+                              <p className="font-bold text-white text-sm">
+                                {prof?.full_name || prof?.username || 'Unknown'}
+                              </p>
+                              {prof?.username && prof?.full_name && (
+                                <p className="text-[11px] text-neutral-500">@{prof.username}</p>
                               )}
                             </div>
-                            <div>
-                              <span className="font-bold text-white text-xs block truncate max-w-[120px] leading-tight">
-                                {sub.profiles?.full_name || 'Member'}
-                              </span>
-                              <span className="text-[9px] text-neutral-500 block leading-tight">
-                                {new Date(sub.created_at).toLocaleDateString()}
-                              </span>
-                            </div>
+                          </div>
+                          <p className="text-neutral-500 text-[10px]">
+                            {format(new Date(submission.created_at), 'MMM d, h:mm a')}
+                          </p>
+                        </div>
+
+                        <div className="flex items-center justify-between gap-4 p-3 bg-white/[0.02] border border-white/5 rounded-2xl">
+                          <div className="space-y-1">
+                            <span className="text-[10px] text-neutral-500 font-bold uppercase tracking-wider block">Submission</span>
+                            {submission.content_type === 'image' && submission.content_url ? (
+                              <div className="flex items-center gap-2">
+                                <button
+                                  type="button"
+                                  onClick={() => setPreviewImage(submission.content_url)}
+                                  className="h-12 w-12 rounded-xl overflow-hidden border border-white/5 bg-neutral-900 shrink-0 cursor-zoom-in hover:opacity-85 transition-opacity"
+                                  title="Click to expand"
+                                >
+                                  <img
+                                    src={submission.content_url}
+                                    alt="Submission"
+                                    className="h-full w-full object-cover"
+                                  />
+                                </button>
+                                <span className="text-xs text-neutral-400 truncate max-w-[120px]">{submission.caption || 'Image'}</span>
+                              </div>
+                            ) : submission.external_link ? (
+                              <a
+                                href={submission.external_link}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                className="inline-flex items-center gap-1.5 text-cyan-400 hover:text-cyan-300 text-xs"
+                              >
+                                <ExternalLink className="h-3 w-3" />
+                                View Link
+                              </a>
+                            ) : (
+                              <span className="text-neutral-400 text-xs italic">{submission.caption || 'Entry'}</span>
+                            )}
                           </div>
 
-                          <div className="flex flex-col items-end gap-1">
-                            <span className={cn(
-                              "text-[8px] font-bold uppercase px-1.5 py-0.5 rounded tracking-wider",
-                              sub.status === 'winner' && "bg-cyan-500/10 text-cyan-400",
-                              sub.status === 'approved' && "bg-green-500/10 text-green-500",
-                              sub.status === 'rejected' && "bg-red-500/10 text-red-500",
-                              sub.status === 'pending' && "bg-yellow-500/10 text-yellow-500"
-                            )}>
-                              {sub.status}
-                            </span>
-                            {sub.score !== null && (
-                              <span className="text-[10px] text-cyan-400 font-extrabold">{sub.score} / 100</span>
+                          <div className="text-right space-y-1">
+                            <Badge
+                              variant="outline"
+                              className={cn(
+                                'capitalize text-[10px] font-bold px-2 py-0.5 rounded-full border',
+                                submission.status === 'approved' && 'bg-green-500/10 text-green-400 border-green-500/20',
+                                submission.status === 'rejected' && 'bg-red-500/10 text-red-400 border-red-500/20',
+                                submission.status === 'winner' && 'bg-cyan-500/10 text-cyan-400 border-cyan-500/20',
+                                submission.status === 'pending' && 'bg-yellow-500/10 text-yellow-400 border-yellow-500/20'
+                              )}
+                            >
+                              {submission.status}
+                            </Badge>
+                            {submission.score != null ? (
+                              <span className="text-xs text-cyan-400 font-bold block">
+                                Score: {submission.score}<span className="text-[10px] text-neutral-500 font-normal">/100</span>
+                              </span>
+                            ) : (
+                              <span className="text-[10px] text-neutral-600 font-semibold block">Not Scored</span>
                             )}
                           </div>
                         </div>
 
-                        {/* Submission Content */}
-                        {sub.content_type === 'image' && sub.content_url && (
-                          <div className="relative aspect-video w-full bg-neutral-900 border border-white/5 rounded-xl overflow-hidden">
-                            <img src={sub.content_url} alt="Submission" className="h-full w-full object-cover group-hover:scale-105 transition-transform duration-300" />
-                          </div>
-                        )}
-
-                        {sub.content_type === 'text' && (
-                          <div className="p-3 bg-white/[0.01] border border-white/5 rounded-xl text-xs text-neutral-300 line-clamp-4 leading-relaxed italic whitespace-pre-wrap">
-                            "{sub.caption}"
-                          </div>
-                        )}
-
-                        {['link', 'drive_link'].includes(sub.content_type) && sub.external_link && (
-                          <div className="flex items-center gap-2 p-3 bg-white/[0.01] border border-white/5 rounded-xl text-xs text-neutral-300">
-                            <ExternalLink className="h-4 w-4 text-cyan-400 shrink-0" />
-                            <a href={sub.external_link} target="_blank" rel="noopener noreferrer" className="text-cyan-400 hover:underline truncate">
-                              {sub.external_link}
-                            </a>
-                          </div>
-                        )}
-
-                        {/* Caption (if not text mode) */}
-                        {sub.content_type !== 'text' && sub.caption && (
-                          <p className="text-[11px] text-neutral-400 line-clamp-2 leading-relaxed italic">
-                            "{sub.caption}"
-                          </p>
-                        )}
+                        <div className="flex items-center gap-2">
+                          {submission.status !== 'approved' && (
+                            <Button
+                              onClick={() => handleUpdateStatus(submission.id, 'approved')}
+                              disabled={isPending}
+                              variant="outline"
+                              className="flex-1 h-9 border-green-500/20 hover:bg-green-500/10 text-green-400 text-xs font-bold rounded-xl gap-1.5 justify-center"
+                            >
+                              <ThumbsUp className="h-3.5 w-3.5" />
+                              Approve
+                            </Button>
+                          )}
+                          {submission.status !== 'rejected' && (
+                            <Button
+                              onClick={() => handleUpdateStatus(submission.id, 'rejected')}
+                              disabled={isPending}
+                              variant="outline"
+                              className="flex-1 h-9 border-red-500/20 hover:bg-red-500/10 text-red-400 text-xs font-bold rounded-xl gap-1.5 justify-center"
+                            >
+                              <ThumbsDown className="h-3.5 w-3.5" />
+                              Reject
+                            </Button>
+                          )}
+                          <Button
+                            onClick={() => openScoreDialog(submission)}
+                            variant="outline"
+                            className="flex-1 h-9 border-purple-500/25 hover:bg-purple-500/10 text-purple-400 text-xs font-bold rounded-xl gap-1.5 justify-center"
+                          >
+                            <Star className="h-3.5 w-3.5" />
+                            Score
+                          </Button>
+                        </div>
                       </div>
-
-                      {/* Card actions */}
-                      <div className="border-t border-white/5 p-3 bg-white/[0.01] flex justify-between gap-2 mt-auto">
-                        <div className="flex gap-1.5">
-                          <Button
-                            onClick={() => handleUpdateStatus(sub.id, 'approved')}
-                            disabled={isPending}
-                            size="icon"
-                            variant="ghost"
-                            className="h-8 w-8 hover:bg-green-500/10 text-neutral-400 hover:text-green-500 rounded-lg"
-                          >
-                            <Check className="h-4 w-4" />
-                          </Button>
-                          <Button
-                            onClick={() => handleUpdateStatus(sub.id, 'rejected')}
-                            disabled={isPending}
-                            size="icon"
-                            variant="ghost"
-                            className="h-8 w-8 hover:bg-red-500/10 text-neutral-400 hover:text-red-500 rounded-lg"
-                          >
-                            <X className="h-4 w-4" />
-                          </Button>
-                        </div>
-
-                        <Button
-                          onClick={() => handleStartScoring(sub)}
-                          variant="ghost"
-                          size="sm"
-                          className="h-8 hover:bg-cyan-500/10 text-cyan-400 text-xs font-bold rounded-lg px-2.5"
-                        >
-                          Grade Entry
-                        </Button>
-                      </div>
-                    </Card>
-                  ))}
-                </div>
-              </div>
-
-              {/* Right Panel: Grading Panel */}
-              <div className="space-y-4">
-                <h3 className="text-md font-bold text-white px-1">Grading & Feedback</h3>
-                {editingSubmissionId ? (
-                  (() => {
-                    const activeSub = submissions.find(s => s.id === editingSubmissionId)
-                    return (
-                      <Card className="border-cyan-500/20 bg-black/40 backdrop-blur-xl rounded-2xl p-5 space-y-4 sticky top-6">
-                        <div>
-                          <h4 className="text-sm font-bold text-white">Grading Entry</h4>
-                          <p className="text-[11px] text-neutral-500">By {activeSub?.profiles?.full_name}</p>
-                        </div>
-
-                        <div className="space-y-2">
-                          <Label htmlFor="score" className="text-neutral-300 font-semibold text-xs uppercase tracking-wider">Score (0 - 100)</Label>
-                          <Input
-                            id="score"
-                            type="number"
-                            min="0"
-                            max="100"
-                            value={scoreVal}
-                            onChange={(e) => setScoreVal(Number(e.target.value))}
-                            className="border-white/5 bg-black/20 text-white rounded-xl placeholder-neutral-600 focus:border-cyan-500/30 text-sm h-11"
-                          />
-                        </div>
-
-                        <div className="space-y-2">
-                          <Label htmlFor="feedback" className="text-neutral-300 font-semibold text-xs uppercase tracking-wider">Feedback</Label>
-                          <Textarea
-                            id="feedback"
-                            placeholder="Write constructive comments for the participant..."
-                            value={feedbackVal}
-                            onChange={(e) => setFeedbackVal(e.target.value)}
-                            rows={4}
-                            className="border-white/5 bg-black/20 text-white rounded-xl placeholder-neutral-600 focus-visible:ring-cyan-500/50 text-xs"
-                          />
-                        </div>
-
-                        <div className="flex gap-2 pt-2">
-                          <Button
-                            onClick={() => setEditingSubmissionId(null)}
-                            variant="ghost"
-                            size="sm"
-                            className="flex-1 border border-white/5 hover:bg-white/5 rounded-xl h-10 text-xs font-semibold text-white"
-                          >
-                            Cancel
-                          </Button>
-                          <Button
-                            onClick={() => handleSaveScore(editingSubmissionId)}
-                            disabled={isPending}
-                            size="sm"
-                            className="flex-1 bg-gradient-to-r from-cyan-500 to-teal-500 hover:opacity-90 text-black rounded-xl h-10 text-xs font-bold flex items-center justify-center gap-1"
-                          >
-                            {isPending ? <Loader2 className="h-3 w-3 animate-spin" /> : 'Save Grade'}
-                          </Button>
-                        </div>
-                      </Card>
                     )
-                  })()
-                ) : (
-                  <Card className="border-white/5 bg-black/20 rounded-2xl p-6 text-center text-xs text-neutral-500 border-dashed">
-                    Select a submission and click "Grade Entry" to review, score, and provide comments.
-                  </Card>
-                )}
-              </div>
-            </div>
+                  })}
+                </div>
+              </CardContent>
+            </Card>
           )}
         </TabsContent>
 
@@ -1491,6 +1672,108 @@ export default function AdminEventDashboard({
               </Button>
             </div>
           </form>
+        </DialogContent>
+      </Dialog>
+
+      {/* Score Dialog (Matching Challenges Modal) */}
+      <Dialog open={scoreDialogOpen} onOpenChange={setScoreDialogOpen}>
+        <DialogContent className="!bg-neutral-950 border border-white/10 !max-w-md rounded-2xl text-white">
+          <DialogHeader>
+            <DialogTitle className="text-white text-lg font-bold flex items-center gap-2">
+              <Star className="h-5 w-5 text-purple-400" />
+              Score Submission
+            </DialogTitle>
+            <DialogDescription className="text-neutral-400 text-xs">
+              Enter a score from 0 to 100 and optional feedback for{' '}
+              <span className="text-white font-medium">
+                {selectedSubmissionForScore?.profiles?.full_name || 'this participant'}
+              </span>.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4 py-2">
+            <div className="space-y-2">
+              <label className="text-xs font-semibold text-neutral-300 uppercase tracking-wider">
+                Score (0–100)
+              </label>
+              <Input
+                type="number"
+                min={0}
+                max={100}
+                value={scoreVal}
+                onChange={(e) => setScoreVal(Number(e.target.value))}
+                placeholder="e.g. 85"
+                className="border-white/10 bg-black/40 text-white rounded-xl placeholder-neutral-600 focus:border-cyan-500/30 h-11"
+              />
+            </div>
+            <div className="space-y-2">
+              <label className="text-xs font-semibold text-neutral-300 uppercase tracking-wider">
+                Feedback (optional)
+              </label>
+              <Textarea
+                value={feedbackVal}
+                onChange={(e) => setFeedbackVal(e.target.value)}
+                placeholder="Write constructive feedback for the participant..."
+                rows={3}
+                className="w-full border border-white/10 bg-black/40 text-white rounded-xl placeholder-neutral-600 focus:border-cyan-500/30 p-3 text-sm resize-none focus:outline-none focus:ring-0"
+              />
+            </div>
+          </div>
+          <DialogFooter className="!bg-transparent !border-t-0 !mx-0 !mb-0 !p-0 !rounded-none gap-2">
+            <Button
+              variant="ghost"
+              onClick={() => setScoreDialogOpen(false)}
+              className="text-neutral-400 hover:text-white hover:bg-white/5 rounded-xl text-xs"
+            >
+              Cancel
+            </Button>
+            <Button
+              onClick={handleSaveModalScore}
+              disabled={isPending}
+              className="bg-gradient-to-r from-purple-500 to-cyan-500 text-white hover:opacity-90 font-bold rounded-xl text-xs h-10 px-4"
+            >
+              {isPending ? (
+                <Loader2 className="h-4 w-4 animate-spin mr-2" />
+              ) : null}
+              Save Score
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Lightbox Image Preview Dialog (Expandable Image View) */}
+      <Dialog open={!!previewImage} onOpenChange={(open) => !open && setPreviewImage(null)}>
+        <DialogContent className="!bg-neutral-950 border border-white/10 p-2 !max-w-2xl flex flex-col items-center justify-center rounded-3xl text-white">
+          <DialogHeader className="w-full flex justify-between items-center px-4 pt-2 border-b border-white/5 pb-2">
+            <DialogTitle className="text-white text-sm font-bold">Submission Image Preview</DialogTitle>
+          </DialogHeader>
+          {previewImage && (
+            <div className="relative max-h-[70vh] w-full flex items-center justify-center p-2 overflow-hidden">
+              <img
+                src={previewImage}
+                alt="Enlarged Submission Preview"
+                className="max-h-[60vh] max-w-full object-contain rounded-2xl border border-white/5"
+              />
+            </div>
+          )}
+          <div className="w-full flex justify-end gap-2 p-3 border-t border-white/5">
+            <a
+              href={previewImage || ''}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="text-xs text-cyan-400 hover:text-cyan-300 font-bold flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-cyan-500/10 hover:bg-cyan-500/20 border border-cyan-500/20 transition-colors"
+            >
+              <ExternalLink className="h-3.5 w-3.5" />
+              Open Original
+            </a>
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={() => setPreviewImage(null)}
+              className="text-neutral-400 hover:text-white hover:bg-white/5 rounded-xl text-xs"
+            >
+              Close
+            </Button>
+          </div>
         </DialogContent>
       </Dialog>
     </div>

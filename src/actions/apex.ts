@@ -92,6 +92,87 @@ export async function getApexRequests(status?: string) {
   }
 }
 
+// 2b. ADMIN ONLY: Get comprehensive shoots report data for Institute Excel export
+export async function getApexShootsReportData(status?: string) {
+  try {
+    const profile = await getCurrentProfile()
+    if (!profile || !isAdminOrBoard(profile.role)) {
+      throw new Error('Unauthorized')
+    }
+
+    const adminClient = await createAdminClient()
+    let query = adminClient
+      .from('apex_requests')
+      .select('*')
+      .order('event_date', { ascending: false })
+
+    if (status && status !== 'all') {
+      if (status === 'scheduled') {
+        query = query.in('status', ['approved', 'assigned', 'ongoing'])
+      } else if (status === 'completed') {
+        query = query.in('status', ['completed', 'delivered'])
+      } else {
+        query = query.eq('status', status)
+      }
+    }
+
+    const { data: requests, error } = await query
+    if (error) throw error
+    if (!requests || requests.length === 0) return { data: [] }
+
+    const requestIds = requests.map((r: any) => r.id)
+
+    // Fetch assignments, equipment assignments, and media deliverables in parallel
+    const [assignmentsRes, eqRes, mediaRes] = await Promise.all([
+      adminClient
+        .from('apex_assignments')
+        .select('id, request_id, role, profiles(id, full_name, roll_number, email)')
+        .in('request_id', requestIds),
+      adminClient
+        .from('equipment_assignments')
+        .select('id, apex_request_id, equipment(id, name, model)')
+        .in('apex_request_id', requestIds),
+      adminClient
+        .from('apex_media')
+        .select('id, request_id, url, media_type')
+        .in('request_id', requestIds),
+    ])
+
+    const assignmentsByReq = new Map<string, any[]>()
+    for (const a of (assignmentsRes.data || [])) {
+      const list = assignmentsByReq.get(a.request_id) || []
+      list.push(a)
+      assignmentsByReq.set(a.request_id, list)
+    }
+
+    const eqByReq = new Map<string, any[]>()
+    for (const eq of (eqRes.data || [])) {
+      const list = eqByReq.get(eq.apex_request_id) || []
+      list.push(eq)
+      eqByReq.set(eq.apex_request_id, list)
+    }
+
+    const mediaByReq = new Map<string, any[]>()
+    for (const m of (mediaRes.data || [])) {
+      const list = mediaByReq.get(m.request_id) || []
+      list.push(m)
+      mediaByReq.set(m.request_id, list)
+    }
+
+    const enriched = requests.map((req: any) => ({
+      ...req,
+      assignments: assignmentsByReq.get(req.id) || [],
+      equipment_assignments: eqByReq.get(req.id) || [],
+      media: mediaByReq.get(req.id) || [],
+    }))
+
+    return { data: enriched }
+  } catch (error: any) {
+    console.error('Error in getApexShootsReportData:', error)
+    return { error: error.message || 'Failed to fetch shoots export data' }
+  }
+}
+
 // 3. AUTHENTICATED: Get single request details
 export async function getApexRequestById(requestId: string) {
   try {

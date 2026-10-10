@@ -1,4 +1,5 @@
 import { format } from 'date-fns'
+import { formatDriveExportUrl } from '@/lib/export-xlsx'
 
 function escapeCsvCell(cell: string | number | boolean | null | undefined): string {
   if (cell === null || cell === undefined) {
@@ -142,7 +143,7 @@ export function exportEventConsolidatedResults(
       sub ? (sub.status ? sub.status.charAt(0).toUpperCase() + sub.status.slice(1) : 'Submitted') : 'No Submission',
       sub ? formatSafeDate(sub.created_at) : 'N/A',
       sub ? sub.content_type : 'N/A',
-      sub ? (sub.external_link || sub.content_url || 'N/A') : 'N/A',
+      sub ? (formatDriveExportUrl(sub.external_link || sub.content_url) || 'N/A') : 'N/A',
       sub ? (sub.caption || '') : '',
       sub && sub.score !== null && sub.score !== undefined ? sub.score : 'N/A',
       sub ? (sub.feedback || '') : '',
@@ -168,7 +169,7 @@ export function exportEventConsolidatedResults(
         sub.status ? sub.status.charAt(0).toUpperCase() + sub.status.slice(1) : 'Submitted',
         formatSafeDate(sub.created_at),
         sub.content_type,
-        sub.external_link || sub.content_url || 'N/A',
+        formatDriveExportUrl(sub.external_link || sub.content_url) || 'N/A',
         sub.caption || '',
         sub.score !== null && sub.score !== undefined ? sub.score : 'N/A',
         sub.feedback || '',
@@ -263,7 +264,7 @@ export function exportEventSubmissionsOnly(
       sub?.status ? sub.status.charAt(0).toUpperCase() + sub.status.slice(1) : 'Submitted',
       formatSafeDate(sub?.created_at),
       sub?.content_type || 'N/A',
-      sub?.external_link || sub?.content_url || 'N/A',
+      formatDriveExportUrl(sub?.external_link || sub?.content_url) || 'N/A',
       sub?.caption || '',
       sub && sub.score !== null && sub.score !== undefined ? sub.score : 'N/A',
       sub?.feedback || '',
@@ -329,7 +330,7 @@ export function exportChallengeSubmissions(
       sub?.status ? sub.status.charAt(0).toUpperCase() + sub.status.slice(1) : 'Submitted',
       formatSafeDate(sub?.created_at),
       sub?.content_type || 'N/A',
-      sub?.external_link || sub?.content_url || 'N/A',
+      formatDriveExportUrl(sub?.external_link || sub?.content_url) || 'N/A',
       sub?.caption || '',
       sub && sub.score !== null && sub.score !== undefined ? sub.score : 'N/A',
       sub?.feedback || '',

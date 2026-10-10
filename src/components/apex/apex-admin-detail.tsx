@@ -6,7 +6,7 @@ import { useRouter } from 'next/navigation'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
-import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
+import { Tabs, TabsContent } from '@/components/ui/tabs'
 import { Label } from '@/components/ui/label'
 import { Input } from '@/components/ui/input'
 import { Textarea } from '@/components/ui/textarea'
@@ -488,35 +488,91 @@ export default function ApexAdminDetail({
         </div>
       </div>
 
-      {/* Tabs Layout - Perfectly aligned across container width */}
+      {/* Tabs Layout - Perfectly aligned across container width with no overflow */}
       <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full space-y-6">
-        <TabsList className="grid grid-cols-2 sm:grid-cols-5 w-full bg-black/40 border border-white/10 rounded-2xl p-1.5 h-auto text-xs gap-1.5 shadow-xl">
-          <TabsTrigger value="overview" className="rounded-xl py-2.5 font-bold data-[state=active]:bg-cyan-500 data-[state=active]:text-black text-white/70 flex items-center justify-center gap-1.5 transition-all">
-            <Info className="h-3.5 w-3.5" />
-            <span>Overview</span>
-          </TabsTrigger>
-          <TabsTrigger value="assignments" className="rounded-xl py-2.5 font-bold data-[state=active]:bg-cyan-500 data-[state=active]:text-black text-white/70 flex items-center justify-center gap-1.5 transition-all">
-            <Users className="h-3.5 w-3.5" />
-            <span>Crew & Gear</span>
-          </TabsTrigger>
-          <TabsTrigger value="deliverables" className="rounded-xl py-2.5 font-bold data-[state=active]:bg-cyan-500 data-[state=active]:text-black text-white/70 flex items-center justify-center gap-1.5 transition-all">
-            <FolderHeart className="h-3.5 w-3.5" />
-            <span>Deliverables</span>
-          </TabsTrigger>
-          <TabsTrigger value="attendance" className="rounded-xl py-2.5 font-bold data-[state=active]:bg-cyan-500 data-[state=active]:text-black text-white/70 flex items-center justify-center gap-1.5 transition-all">
-            <UserCheck className="h-3.5 w-3.5" />
-            <span>Check-in Logs</span>
-          </TabsTrigger>
-          <TabsTrigger value="missed-attendance" className="rounded-xl py-2.5 font-bold data-[state=active]:bg-cyan-500 data-[state=active]:text-black text-white/70 flex items-center justify-center gap-1.5 transition-all">
-            <Clock className="h-3.5 w-3.5 text-amber-400" />
-            <span>Missed Attendance</span>
-            {missedRecords.length > 0 && (
-              <Badge className="bg-amber-500/20 text-amber-300 border-none text-[9px] px-1.5 py-0 h-4 min-w-4 flex items-center justify-center rounded-full font-bold ml-1">
-                {missedRecords.length}
-              </Badge>
-            )}
-          </TabsTrigger>
-        </TabsList>
+        <div className="w-full bg-black/40 border border-white/10 rounded-2xl p-1.5 shadow-xl">
+          <div className="grid grid-cols-2 sm:grid-cols-5 gap-1.5 w-full">
+            <button
+              type="button"
+              onClick={() => setActiveTab('overview')}
+              className={cn(
+                "w-full py-3 px-3 rounded-xl font-bold text-xs flex items-center justify-center gap-2 transition-all cursor-pointer select-none",
+                activeTab === 'overview'
+                  ? "bg-cyan-500 text-black shadow-md shadow-cyan-500/20 font-black"
+                  : "text-white/70 hover:text-white hover:bg-white/5"
+              )}
+            >
+              <Info className="h-4 w-4" />
+              <span>Overview</span>
+            </button>
+
+            <button
+              type="button"
+              onClick={() => setActiveTab('assignments')}
+              className={cn(
+                "w-full py-3 px-3 rounded-xl font-bold text-xs flex items-center justify-center gap-2 transition-all cursor-pointer select-none",
+                activeTab === 'assignments'
+                  ? "bg-cyan-500 text-black shadow-md shadow-cyan-500/20 font-black"
+                  : "text-white/70 hover:text-white hover:bg-white/5"
+              )}
+            >
+              <Users className="h-4 w-4" />
+              <span>Crew & Gear</span>
+            </button>
+
+            <button
+              type="button"
+              onClick={() => setActiveTab('deliverables')}
+              className={cn(
+                "w-full py-3 px-3 rounded-xl font-bold text-xs flex items-center justify-center gap-2 transition-all cursor-pointer select-none",
+                activeTab === 'deliverables'
+                  ? "bg-cyan-500 text-black shadow-md shadow-cyan-500/20 font-black"
+                  : "text-white/70 hover:text-white hover:bg-white/5"
+              )}
+            >
+              <FolderHeart className="h-4 w-4" />
+              <span>Deliverables</span>
+            </button>
+
+            <button
+              type="button"
+              onClick={() => setActiveTab('attendance')}
+              className={cn(
+                "w-full py-3 px-3 rounded-xl font-bold text-xs flex items-center justify-center gap-2 transition-all cursor-pointer select-none",
+                activeTab === 'attendance'
+                  ? "bg-cyan-500 text-black shadow-md shadow-cyan-500/20 font-black"
+                  : "text-white/70 hover:text-white hover:bg-white/5"
+              )}
+            >
+              <UserCheck className="h-4 w-4" />
+              <span>Check-in Logs</span>
+            </button>
+
+            <button
+              type="button"
+              onClick={() => setActiveTab('missed-attendance')}
+              className={cn(
+                "w-full py-3 px-3 rounded-xl font-bold text-xs flex items-center justify-center gap-2 transition-all col-span-2 sm:col-span-1 cursor-pointer select-none",
+                activeTab === 'missed-attendance'
+                  ? "bg-cyan-500 text-black shadow-md shadow-cyan-500/20 font-black"
+                  : "text-white/70 hover:text-white hover:bg-white/5"
+              )}
+            >
+              <Clock className={cn("h-4 w-4", activeTab === 'missed-attendance' ? "text-black" : "text-amber-400")} />
+              <span>Missed Attendance</span>
+              {missedRecords.length > 0 && (
+                <span className={cn(
+                  "text-[9px] px-1.5 py-0.5 rounded-full font-bold ml-1",
+                  activeTab === 'missed-attendance'
+                    ? "bg-black/20 text-black"
+                    : "bg-amber-500/20 text-amber-300"
+                )}>
+                  {missedRecords.length}
+                </span>
+              )}
+            </button>
+          </div>
+        </div>
 
         {/* Tab 1: Overview */}
         <TabsContent value="overview" className="mt-0 space-y-6">

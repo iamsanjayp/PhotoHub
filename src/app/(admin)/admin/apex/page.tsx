@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useTransition } from 'react'
 import Link from 'next/link'
-import { getApexRequests, approveApexRequest, rejectApexRequest } from '@/actions/apex'
+import { getApexRequests, approveApexRequest, rejectApexRequest, getApexShootsReportData } from '@/actions/apex'
 import { Card, CardContent } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -21,12 +21,14 @@ import {
   Calendar,
   AlertCircle,
   FileCheck2,
-  Sparkles
+  Sparkles,
+  FileSpreadsheet
 } from 'lucide-react'
 import { toast } from 'sonner'
 import { cn } from '@/lib/utils'
 import { ScheduleShootDialog } from '@/components/apex/schedule-shoot-dialog'
 import { useAuth } from '@/providers/auth-provider'
+import { exportShootsMonthlyReportToXlsx } from '@/lib/export-xlsx'
 
 export default function AdminApexPage() {
   const { profile } = useAuth()
@@ -35,6 +37,33 @@ export default function AdminApexPage() {
   const [searchTerm, setSearchTerm] = useState('')
   const [statusTab, setStatusTab] = useState('scheduled')
   const [isPending, startTransition] = useTransition()
+  const [isExportingReport, setIsExportingReport] = useState(false)
+
+  const handleExportShootsReport = async () => {
+    setIsExportingReport(true)
+    try {
+      const res = await getApexShootsReportData(statusTab)
+      if (res.error) {
+        toast.error(res.error)
+        return
+      }
+      const data = res.data || []
+      if (data.length === 0) {
+        toast.info('No shoots found to export for the current filter')
+        return
+      }
+      exportShootsMonthlyReportToXlsx({
+        shoots: data,
+        filterLabel: statusTab === 'all' ? 'All' : statusTab === 'scheduled' ? 'Scheduled-and-Active' : statusTab,
+      })
+      toast.success(`Exported report for ${data.length} shoots to Excel (.xlsx)!`)
+    } catch (err: any) {
+      console.error(err)
+      toast.error('Failed to export shoots report')
+    } finally {
+      setIsExportingReport(false)
+    }
+  }
 
   const loadRequests = async () => {
     setLoading(true)
@@ -152,13 +181,31 @@ export default function AdminApexPage() {
           </p>
         </div>
 
-        <ScheduleShootDialog 
-          currentUser={profile || undefined}
-          onSuccess={() => {
-            loadRequests()
-            setStatusTab('scheduled')
-          }} 
-        />
+        <div className="flex flex-wrap items-center gap-2">
+          <Button
+            type="button"
+            variant="outline"
+            disabled={isExportingReport}
+            onClick={handleExportShootsReport}
+            className="border-emerald-500/30 bg-emerald-500/10 hover:bg-emerald-500/20 text-emerald-400 font-bold rounded-xl h-10 px-3.5 text-xs gap-2 transition-all shadow-sm"
+            title="Download comprehensive monthly / periodic report of shoots for the institute (XLSX)"
+          >
+            {isExportingReport ? (
+              <Loader2 className="h-4 w-4 animate-spin text-emerald-400" />
+            ) : (
+              <FileSpreadsheet className="h-4 w-4 text-emerald-400" />
+            )}
+            Export Shoots Report (XLSX)
+          </Button>
+
+          <ScheduleShootDialog 
+            currentUser={profile || undefined}
+            onSuccess={() => {
+              loadRequests()
+              setStatusTab('scheduled')
+            }} 
+          />
+        </div>
       </div>
 
       {/* Tabs / Filter bar */}

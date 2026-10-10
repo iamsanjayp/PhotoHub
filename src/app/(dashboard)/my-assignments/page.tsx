@@ -10,11 +10,21 @@ import {
   deleteApexMedia,
   updateApexStatus,
 } from '@/actions/apex'
+import { addMissedAttendanceRecord } from '@/actions/missed-attendance'
 import { useAuth } from '@/providers/auth-provider'
 import { Card, CardContent, CardHeader } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import { Skeleton } from '@/components/ui/skeleton'
+import { Input } from '@/components/ui/input'
+import { Label } from '@/components/ui/label'
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogDescription,
+} from '@/components/ui/dialog'
 import { MediaUpload } from '@/components/ui/media-upload'
 import { format } from 'date-fns'
 import {
@@ -35,7 +45,8 @@ import {
   Calendar,
   Sparkles,
   Layers,
-  Video
+  Video,
+  GraduationCap
 } from 'lucide-react'
 import { toast } from 'sonner'
 import { cn } from '@/lib/utils'
@@ -46,6 +57,50 @@ export default function MyAssignmentsPage() {
   const { profile } = useAuth()
   const queryClient = useQueryClient()
   const [activeTab, setActiveTab] = useState<'active' | 'completed'>('active')
+
+  // Claim missed attendance state
+  const [claimDialogOpen, setClaimDialogOpen] = useState(false)
+  const [claimShoot, setClaimShoot] = useState<any>(null)
+  const [claimRollNumber, setClaimRollNumber] = useState('')
+  const [claimSelectedHours, setClaimSelectedHours] = useState<number[]>([1])
+  const [claimRemarks, setClaimRemarks] = useState('')
+  const [isClaiming, setIsClaiming] = useState(false)
+
+  const handleClaimSubmit = async (e: React.FormEvent) => {
+    e.preventDefault()
+    if (!claimShoot) return
+    if (!claimRollNumber.trim()) {
+      toast.error('Please enter your college roll number')
+      return
+    }
+    if (claimSelectedHours.length === 0) {
+      toast.error('Please select at least one hour')
+      return
+    }
+
+    setIsClaiming(true)
+    const res = await addMissedAttendanceRecord({
+      sourceType: 'shoot',
+      sourceId: claimShoot.id,
+      userId: profile?.id,
+      name: profile?.full_name || 'Crew Member',
+      email: profile?.email || '',
+      rollNumber: claimRollNumber.trim(),
+      hours: claimSelectedHours,
+      notes: claimRemarks.trim() || undefined,
+    })
+    setIsClaiming(false)
+
+    if (res.error) {
+      toast.error(res.error)
+    } else {
+      toast.success('Missed attendance claimed successfully! Logged for college export.')
+      setClaimDialogOpen(false)
+      setClaimShoot(null)
+      setClaimRemarks('')
+      setClaimSelectedHours([1])
+    }
+  }
 
   // Guard role: camera holders (board & committee members), admins, leaders
   const isAuthorized =
@@ -607,6 +662,26 @@ export default function MyAssignmentsPage() {
                               <span>Your attendance is logged. Points awarded (+25 pts)!</span>
                             </div>
                           )}
+
+                          {/* Missed PCDP college attendance claim button */}
+                          <div className="pt-2 border-t border-white/5">
+                            <Button
+                              type="button"
+                              size="sm"
+                              variant="outline"
+                              onClick={() => {
+                                setClaimShoot(req)
+                                setClaimRollNumber(profile.roll_number || '')
+                                setClaimSelectedHours([1])
+                                setClaimRemarks('')
+                                setClaimDialogOpen(true)
+                              }}
+                              className="w-full border-amber-500/30 bg-amber-500/5 hover:bg-amber-500/15 text-amber-300 font-bold rounded-xl h-8.5 text-xs gap-1.5 shadow-sm"
+                            >
+                              <Clock className="h-3.5 w-3.5 text-amber-400" />
+                              Claim Missed College Attendance
+                            </Button>
+                          </div>
                         </div>
 
                         {/* Deliverables upload */}
@@ -685,6 +760,107 @@ export default function MyAssignmentsPage() {
           })}
         </div>
       )}
+
+      {/* Dialog for crew members to self-claim missed college attendance */}
+      <Dialog open={claimDialogOpen} onOpenChange={setClaimDialogOpen}>
+        <DialogContent className="border-white/10 bg-neutral-950 text-white sm:max-w-md rounded-2xl">
+          <DialogHeader>
+            <DialogTitle className="text-lg font-bold flex items-center gap-2">
+              <Clock className="h-5 w-5 text-amber-400" />
+              Claim Missed College Attendance
+            </DialogTitle>
+            <DialogDescription className="text-xs text-neutral-400">
+              Did you miss college classes/labs while covering <span className="text-white font-bold">{claimShoot?.event_name}</span>? Log your missed hours for institute attendance normalization.
+            </DialogDescription>
+          </DialogHeader>
+
+          <form onSubmit={handleClaimSubmit} className="space-y-4 pt-2">
+            <div className="space-y-1.5">
+              <Label className="text-xs font-bold text-neutral-300 flex items-center gap-1.5">
+                <GraduationCap className="h-3.5 w-3.5 text-amber-400" />
+                Roll Number / Register Number *
+              </Label>
+              <Input
+                value={claimRollNumber}
+                onChange={(e) => setClaimRollNumber(e.target.value.toUpperCase())}
+                placeholder="e.g. 7376221EC101"
+                className="bg-black/40 border-white/10 text-xs font-mono uppercase h-10 rounded-xl text-white"
+              />
+            </div>
+
+            <div className="space-y-2">
+              <div className="flex items-center justify-between">
+                <Label className="text-xs font-bold text-neutral-300 flex items-center gap-1.5">
+                  <Clock className="h-3.5 w-3.5 text-amber-400" />
+                  Select Missed Hours (1 - 7) *
+                </Label>
+                <span className="text-[10px] text-amber-400 font-bold">
+                  {claimSelectedHours.length} hour(s) selected
+                </span>
+              </div>
+              <div className="grid grid-cols-7 gap-1">
+                {[1, 2, 3, 4, 5, 6, 7].map((hour) => {
+                  const isSelected = claimSelectedHours.includes(hour)
+                  return (
+                    <button
+                      key={hour}
+                      type="button"
+                      onClick={() =>
+                        setClaimSelectedHours((prev) =>
+                          prev.includes(hour)
+                            ? prev.filter((h) => h !== hour)
+                            : [...prev, hour].sort((a, b) => a - b)
+                        )
+                      }
+                      className={cn(
+                        'py-2 rounded-lg text-xs font-bold border transition-all text-center',
+                        isSelected
+                          ? 'bg-amber-500 text-black border-amber-400 font-black shadow-sm shadow-amber-500/20'
+                          : 'bg-black/30 border-white/10 text-neutral-400 hover:text-white'
+                      )}
+                    >
+                      H{hour}
+                    </button>
+                  )
+                })}
+              </div>
+              <p className="text-[10px] text-neutral-500">
+                Rule: Each hour will be exported as a distinct row in the college Excel report.
+              </p>
+            </div>
+
+            <div className="space-y-1.5">
+              <Label className="text-xs font-bold text-neutral-300">
+                Reason / Missed Lecture Details (Optional)
+              </Label>
+              <Input
+                value={claimRemarks}
+                onChange={(e) => setClaimRemarks(e.target.value)}
+                placeholder="e.g. EC302 Lab, Analog Electronics"
+                className="bg-black/40 border-white/10 text-xs h-10 rounded-xl text-white"
+              />
+            </div>
+
+            <div className="flex gap-2 pt-2">
+              <Button
+                type="button"
+                variant="ghost"
+                onClick={() => setClaimDialogOpen(false)}
+                className="flex-1 border border-white/10 hover:bg-white/5 rounded-xl h-10 text-xs font-semibold text-white"
+              >
+                Cancel
+              </Button>
+              <Button
+                type="submit"
+                disabled={isClaiming}
+                className="flex-1 bg-gradient-to-r from-amber-500 to-orange-500 hover:opacity-90 text-black font-bold rounded-xl h-10 text-xs"
+              >
+                {isClaiming ? <Loader2 className="h-4 w-4 animate-spin" /> : 'Submit Claim'}
+              </Button>
+            </div>
+          </form>
+        </DialogContent>
+      </Dialog>
     </div>
   )
 }
