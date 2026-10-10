@@ -276,11 +276,40 @@ export default function MyAssignmentsPage() {
             const hasCheckedIn = !!attendanceRecord?.checked_in_at
             const hasCompleted = !!attendanceRecord?.checked_out_at
 
-            // Shoot-level gear allocation: visible to all crew members
-            const shootGearAssignment = (req.apex_assignments || []).find((a: any) => a.equipment)
-            const shootEquipment = shootGearAssignment?.equipment || assignment.equipment
-            const gearCustodian = shootGearAssignment?.profiles || (assignment.equipment ? profile : null)
-            const isMeCustodian = gearCustodian ? gearCustodian.id === profile.id : false
+            // Shoot-level gear allocation: collect all allocated equipment items for this shoot
+            const shootGearList = (() => {
+              const map = new Map<string, { equipment: any; custodian: any }>()
+
+              // 1. From equipment_assignments on req
+              for (const ea of (req.equipment_assignments || [])) {
+                if (ea.equipment && !ea.returned_at) {
+                  map.set(ea.equipment.id, {
+                    equipment: ea.equipment,
+                    custodian: ea.profiles,
+                  })
+                }
+              }
+
+              // 2. From apex_assignments on req
+              for (const a of (req.apex_assignments || [])) {
+                if (a.equipment && !map.has(a.equipment.id)) {
+                  map.set(a.equipment.id, {
+                    equipment: a.equipment,
+                    custodian: a.profiles,
+                  })
+                }
+              }
+
+              // 3. Fallback to current assignment equipment
+              if (assignment.equipment && !map.has(assignment.equipment.id)) {
+                map.set(assignment.equipment.id, {
+                  equipment: assignment.equipment,
+                  custodian: profile,
+                })
+              }
+
+              return Array.from(map.values())
+            })()
 
             return (
               <Card
@@ -415,36 +444,53 @@ export default function MyAssignmentsPage() {
                       )}
 
                       {/* Shoot Gear Allocation (Visible to ALL crew members) */}
-                      {shootEquipment ? (
-                        <div className="flex items-start gap-3 border border-cyan-500/20 bg-cyan-500/5 p-3.5 rounded-2xl mt-3">
-                          <Camera className="h-5 w-5 text-cyan-400 shrink-0 mt-0.5" />
-                          <div className="space-y-1">
-                            <div className="flex items-center gap-2">
-                              <span className="font-bold text-white text-xs">
-                                Shoot Camera: {shootEquipment.name}
-                              </span>
-                              <Badge className="bg-cyan-500/20 text-cyan-300 text-[9px] px-1.5 py-0 rounded-full border-none">
-                                {shootEquipment.type}
-                              </Badge>
-                            </div>
-                            <p className="text-[11px] text-neutral-300">
-                              Model: {shootEquipment.model || shootEquipment.type} • S/N:{' '}
-                              {shootEquipment.serial_number || 'N/A'}
-                            </p>
-                            {gearCustodian && (
-                              <p className="text-[10px] text-cyan-300 pt-0.5">
-                                Custodian:{' '}
-                                <strong>
-                                  {isMeCustodian ? 'You' : gearCustodian.full_name || 'Teammate'}
-                                </strong>{' '}
-                                (Responsible for gear checkout & custody)
-                              </p>
-                            )}
+                      {shootGearList.length > 0 ? (
+                        <div className="space-y-2 mt-3">
+                          <div className="flex items-center gap-1.5 text-neutral-300 font-bold text-xs">
+                            <Camera className="h-3.5 w-3.5 text-cyan-400" />
+                            <span>Allocated Shoot Equipment & Cameras ({shootGearList.length})</span>
+                          </div>
+                          <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
+                            {shootGearList.map((gearItem) => {
+                              const eq = gearItem.equipment
+                              const custodian = gearItem.custodian
+                              const isMeCustodian = custodian ? custodian.id === profile.id : false
+
+                              return (
+                                <div
+                                  key={eq.id}
+                                  className="flex items-start gap-3 border border-cyan-500/20 bg-cyan-500/5 p-3 rounded-xl"
+                                >
+                                  <Camera className="h-4 w-4 text-cyan-400 shrink-0 mt-0.5" />
+                                  <div className="space-y-0.5 text-xs">
+                                    <div className="flex items-center gap-1.5 flex-wrap">
+                                      <span className="font-bold text-white text-xs">{eq.name}</span>
+                                      <Badge className="bg-cyan-500/20 text-cyan-300 text-[9px] px-1.5 py-0 rounded-full border-none capitalize">
+                                        {eq.type}
+                                      </Badge>
+                                      {isMeCustodian && (
+                                        <Badge className="bg-purple-500/20 text-purple-300 border border-purple-500/30 text-[9px] px-1.5 py-0 rounded-full font-bold">
+                                          You are Custodian
+                                        </Badge>
+                                      )}
+                                    </div>
+                                    <p className="text-[11px] text-neutral-400">
+                                      Model: {eq.model || eq.type} • S/N: {eq.serial_number || 'N/A'}
+                                    </p>
+                                    {custodian && !isMeCustodian && (
+                                      <p className="text-[10px] text-cyan-300 pt-0.5">
+                                        Custodian: <strong>{custodian.full_name || 'Teammate'}</strong>
+                                      </p>
+                                    )}
+                                  </div>
+                                </div>
+                              )
+                            })}
                           </div>
                         </div>
                       ) : (
-                        <div className="text-[11px] text-neutral-500 italic p-3 border border-dashed border-white/5 rounded-xl">
-                          No club camera allocated for this shoot (personal equipment used).
+                        <div className="text-[11px] text-neutral-500 italic p-3 border border-dashed border-white/5 rounded-xl mt-3">
+                          No club camera allocated for this shoot (crew using personal equipment).
                         </div>
                       )}
 

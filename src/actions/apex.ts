@@ -97,10 +97,10 @@ export async function getApexRequestById(requestId: string) {
     const profile = await getCurrentProfile()
     if (!profile) throw new Error('Unauthorized')
 
-    const supabase = await createClient()
+    const adminClient = await createAdminClient()
     
     // Fetch request
-    const { data: request, error: reqError } = await supabase
+    const { data: request, error: reqError } = await adminClient
       .from('apex_requests')
       .select('*')
       .eq('id', requestId)
@@ -109,15 +109,21 @@ export async function getApexRequestById(requestId: string) {
     if (reqError) throw reqError
 
     // Fetch assignments with profiles, equipment, and attendance logs
-    const { data: assignments, error: assignError } = await supabase
+    const { data: assignments, error: assignError } = await adminClient
       .from('apex_assignments')
       .select('*, profiles(*), equipment(*), apex_attendance(*)')
       .eq('request_id', requestId)
 
     if (assignError) throw assignError
 
+    // Fetch equipment assignments (for all allocated gear items on this shoot)
+    const { data: eqAssignments } = await adminClient
+      .from('equipment_assignments')
+      .select('*, equipment(*), profiles:assigned_to(*)')
+      .eq('apex_request_id', requestId)
+
     // Fetch media deliverables
-    const { data: media, error: mediaError } = await supabase
+    const { data: media, error: mediaError } = await adminClient
       .from('apex_media')
       .select('*, profiles(*)')
       .eq('request_id', requestId)
@@ -128,6 +134,7 @@ export async function getApexRequestById(requestId: string) {
       data: {
         ...request,
         assignments: assignments || [],
+        equipment_assignments: eqAssignments || [],
         media: media || [],
       }
     }
@@ -753,6 +760,32 @@ export async function updateApexStatus(requestId: string, status: 'ongoing' | 'c
 
     if (error) throw error
 
+    // If marked ongoing, mark all allocated shoot equipment as 'assigned'
+    if (status === 'ongoing') {
+      const { data: assignments } = await adminClient
+        .from('apex_assignments')
+        .select('equipment_id')
+        .eq('request_id', requestId)
+
+      const { data: eqAssignments } = await adminClient
+        .from('equipment_assignments')
+        .select('equipment_id')
+        .eq('apex_request_id', requestId)
+        .is('returned_at', null)
+
+      const eqIds = Array.from(new Set([
+        ...(assignments || []).map(a => a.equipment_id),
+        ...(eqAssignments || []).map(ea => ea.equipment_id),
+      ])).filter(Boolean)
+
+      if (eqIds.length > 0) {
+        await adminClient
+          .from('equipment')
+          .update({ status: 'assigned' })
+          .in('id', eqIds)
+      }
+    }
+
     // If completed/delivered, also release any equipment assigned to this request and award points
     if (['completed', 'delivered'].includes(status)) {
       const { data: assignments } = await adminClient
@@ -760,22 +793,30 @@ export async function updateApexStatus(requestId: string, status: 'ongoing' | 'c
         .select('equipment_id')
         .eq('request_id', requestId)
 
-      if (assignments) {
-        const eqIds = assignments.map(a => a.equipment_id).filter(Boolean)
-        if (eqIds.length > 0) {
-          // Free equipment
-          await adminClient
-            .from('equipment')
-            .update({ status: 'available' })
-            .in('id', eqIds)
+      const { data: eqAssignments } = await adminClient
+        .from('equipment_assignments')
+        .select('equipment_id')
+        .eq('apex_request_id', requestId)
+        .is('returned_at', null)
 
-          // Mark return in checkout log
-          await adminClient
-            .from('equipment_assignments')
-            .update({ returned_at: new Date().toISOString() })
-            .eq('apex_request_id', requestId)
-            .is('returned_at', null)
-        }
+      const eqIds = Array.from(new Set([
+        ...(assignments || []).map(a => a.equipment_id),
+        ...(eqAssignments || []).map(ea => ea.equipment_id),
+      ])).filter(Boolean)
+
+      if (eqIds.length > 0) {
+        // Free equipment
+        await adminClient
+          .from('equipment')
+          .update({ status: 'available' })
+          .in('id', eqIds)
+
+        // Mark return in checkout log
+        await adminClient
+          .from('equipment_assignments')
+          .update({ returned_at: new Date().toISOString() })
+          .eq('apex_request_id', requestId)
+          .is('returned_at', null)
       }
 
       // AWARD POINTS to crew members
@@ -808,6 +849,16 @@ export async function getMyAssignments() {
         apex_requests (
           *,
           apex_media (*),
+          equipment_assignments (
+            id,
+            equipment_id,
+            assigned_to,
+            checked_out_at,
+            returned_at,
+            notes,
+            equipment (*),
+            profiles:assigned_to (id, full_name, avatar_url, role)
+          ),
           apex_assignments (
             id,
             user_id,
@@ -874,45 +925,74 @@ export async function createInternalApex(input: CreateInternalApexInput) {
 
     if (reqError) throw reqError
 
-    // Determine primary shoot equipment and custodian if provided at shoot level
-    const shootEquipmentId = (validated.equipment_id && validated.equipment_id !== 'none' && validated.equipment_id.trim() !== '')
-      ? validated.equipment_id.trim()
-      : null
+    // Normalize allocated gear items (support multiple allocated cameras/gear and legacy single equipment_id)
+    const gearList: { equipment_id: string; custodian_id?: string | null }[] = []
 
-    let designatedCustodianId = validated.camera_custodian_id || null
-
-    // If shoot equipment is specified, find or validate the custodian
-    if (shootEquipmentId) {
-      const { data: eq } = await adminClient
-        .from('equipment')
-        .select('type, name')
-        .eq('id', shootEquipmentId)
-        .single()
-
-      if (!designatedCustodianId) {
-        // Pick first crew member eligible for camera, or current user if eligible
-        if (canAccessCamera(profile.role)) {
-          designatedCustodianId = profile.id
-        } else if (hasCrew) {
-          const eligible = validated.crew.find((c) => c.user_id)
-          if (eligible) designatedCustodianId = eligible.user_id
-        }
-      }
-
-      if (eq?.type === 'camera' && designatedCustodianId) {
-        const { data: custodian } = await adminClient
-          .from('profiles')
-          .select('role, full_name')
-          .eq('id', designatedCustodianId)
-          .single()
-
-        if (!custodian || !canAccessCamera(custodian.role)) {
-          throw new Error(`Camera equipment (${eq.name}) can only be assigned to a Camera Holder (Admin, Board, or Committee Member).`)
+    if (Array.isArray(validated.allocated_gear)) {
+      for (const item of validated.allocated_gear) {
+        if (item.equipment_id && item.equipment_id !== 'none' && item.equipment_id.trim() !== '') {
+          gearList.push({
+            equipment_id: item.equipment_id.trim(),
+            custodian_id: item.custodian_id?.trim() || null,
+          })
         }
       }
     }
 
-    // Handle crew assignments and equipment checkouts
+    // Legacy fallback for single equipment_id
+    if (
+      validated.equipment_id &&
+      validated.equipment_id !== 'none' &&
+      validated.equipment_id.trim() !== '' &&
+      !gearList.some((g) => g.equipment_id === validated.equipment_id?.trim())
+    ) {
+      gearList.push({
+        equipment_id: validated.equipment_id.trim(),
+        custodian_id: validated.camera_custodian_id?.trim() || null,
+      })
+    }
+
+    // Validate gear items & verify camera access permissions
+    for (const gear of gearList) {
+      const { data: eq } = await adminClient
+        .from('equipment')
+        .select('type, name')
+        .eq('id', gear.equipment_id)
+        .single()
+
+      if (!gear.custodian_id) {
+        if (canAccessCamera(profile.role)) {
+          gear.custodian_id = profile.id
+        } else if (hasCrew) {
+          const eligible = validated.crew.find((c) => c.user_id)
+          if (eligible) gear.custodian_id = eligible.user_id
+        }
+      }
+
+      if (eq?.type === 'camera' && gear.custodian_id) {
+        const { data: custodian } = await adminClient
+          .from('profiles')
+          .select('role, full_name')
+          .eq('id', gear.custodian_id)
+          .single()
+
+        if (!custodian || !canAccessCamera(custodian.role)) {
+          throw new Error(
+            `Camera equipment (${eq?.name || 'Camera'}) can only be assigned to a Camera Holder (Admin, Board, or Committee Member).`
+          )
+        }
+      }
+    }
+
+    // Build map of custodian -> primary equipment_id for apex_assignments row
+    const custodianToPrimaryEqMap = new Map<string, string>()
+    for (const gear of gearList) {
+      if (gear.custodian_id && !custodianToPrimaryEqMap.has(gear.custodian_id)) {
+        custodianToPrimaryEqMap.set(gear.custodian_id, gear.equipment_id)
+      }
+    }
+
+    // Handle crew assignments
     if (hasCrew) {
       const assignedUserIds = new Set<string>()
 
@@ -922,13 +1002,14 @@ export async function createInternalApex(input: CreateInternalApexInput) {
         }
         assignedUserIds.add(crewMember.user_id)
 
-        // Equipment for this row: either explicitly provided or designated via shootEquipmentId
-        let cleanEquipmentId = (crewMember.equipment_id && crewMember.equipment_id !== 'none' && crewMember.equipment_id.trim() !== '')
-          ? crewMember.equipment_id.trim()
-          : null
+        // Equipment for this row: either explicitly provided or designated via gearList
+        let cleanEquipmentId =
+          crewMember.equipment_id && crewMember.equipment_id !== 'none' && crewMember.equipment_id.trim() !== ''
+            ? crewMember.equipment_id.trim()
+            : null
 
-        if (!cleanEquipmentId && shootEquipmentId && crewMember.user_id === designatedCustodianId) {
-          cleanEquipmentId = shootEquipmentId
+        if (!cleanEquipmentId && custodianToPrimaryEqMap.has(crewMember.user_id)) {
+          cleanEquipmentId = custodianToPrimaryEqMap.get(crewMember.user_id) || null
         }
 
         // Verify camera access permissions if equipment is attached
@@ -947,7 +1028,9 @@ export async function createInternalApex(input: CreateInternalApexInput) {
               .single()
 
             if (!assignee || !canAccessCamera(assignee.role)) {
-              throw new Error(`Camera equipment (${eq.name}) can only be assigned to Camera Holders (Admin, Board, Committee Member).`)
+              throw new Error(
+                `Camera equipment (${eq?.name || 'Camera'}) can only be assigned to Camera Holders (Admin, Board, Committee Member).`
+              )
             }
           }
         }
@@ -965,21 +1048,53 @@ export async function createInternalApex(input: CreateInternalApexInput) {
           })
 
         if (assignError) throw assignError
+      }
+    }
 
-        // If equipment is selected, log reservation or active checkout
-        if (cleanEquipmentId) {
-          // Only mark equipment physically 'assigned' if the shoot is ALREADY ongoing right now
+    // Record checkouts/reservations in equipment_assignments for ALL allocated gear items
+    const processedEqIds = new Set<string>()
+
+    for (const gear of gearList) {
+      if (processedEqIds.has(gear.equipment_id)) continue
+      processedEqIds.add(gear.equipment_id)
+
+      const assignedToId = gear.custodian_id || profile.id
+
+      if (initialStatus === 'ongoing') {
+        await adminClient
+          .from('equipment')
+          .update({ status: 'assigned' })
+          .eq('id', gear.equipment_id)
+      }
+
+      await adminClient
+        .from('equipment_assignments')
+        .insert({
+          equipment_id: gear.equipment_id,
+          assigned_to: assignedToId,
+          assigned_by: profile.id,
+          apex_request_id: request.id,
+          checked_out_at: new Date().toISOString(),
+          notes: initialStatus === 'ongoing' ? 'In Use' : 'Reserved for Shoot',
+        })
+    }
+
+    // Also catch any equipment explicitly attached on a crew member row that wasn't in gearList
+    if (hasCrew) {
+      for (const crewMember of validated.crew) {
+        if (crewMember.equipment_id && !processedEqIds.has(crewMember.equipment_id)) {
+          processedEqIds.add(crewMember.equipment_id)
           if (initialStatus === 'ongoing') {
             await adminClient
               .from('equipment')
               .update({ status: 'assigned' })
-              .eq('id', cleanEquipmentId)
+              .eq('id', crewMember.equipment_id)
           }
 
           await adminClient
             .from('equipment_assignments')
             .insert({
-              equipment_id: cleanEquipmentId,
+              equipment_id: crewMember.equipment_id,
               assigned_to: crewMember.user_id,
               assigned_by: profile.id,
               apex_request_id: request.id,
@@ -999,6 +1114,142 @@ export async function createInternalApex(input: CreateInternalApexInput) {
   } catch (error: any) {
     console.error('Error in createInternalApex:', error)
     return { error: error.message || 'Failed to create internal APEX coverage' }
+  }
+}
+
+// 15. ADMIN: Allocate additional equipment / camera to an existing shoot
+export async function allocateEquipmentToApex(requestId: string, equipmentId: string, custodianId: string) {
+  try {
+    const profile = await getCurrentProfile()
+    if (!profile || (!isAdminOrBoard(profile.role) && !canAccessCamera(profile.role))) {
+      throw new Error('Unauthorized')
+    }
+
+    const adminClient = await createAdminClient()
+
+    // 1. Verify equipment
+    const { data: eq, error: eqErr } = await adminClient
+      .from('equipment')
+      .select('id, name, type, status')
+      .eq('id', equipmentId)
+      .single()
+
+    if (eqErr || !eq) throw new Error('Equipment not found')
+
+    // 2. Verify custodian role if camera
+    const { data: custodian, error: custErr } = await adminClient
+      .from('profiles')
+      .select('id, full_name, role')
+      .eq('id', custodianId)
+      .single()
+
+    if (custErr || !custodian) throw new Error('Custodian not found')
+
+    if (eq.type === 'camera' && !canAccessCamera(custodian.role)) {
+      throw new Error(`Camera equipment (${eq.name}) can only be assigned to a Camera Holder (Admin, Board, or Committee Member).`)
+    }
+
+    // 3. Get request status
+    const { data: req } = await adminClient
+      .from('apex_requests')
+      .select('status')
+      .eq('id', requestId)
+      .single()
+
+    // 4. Update apex_assignments if custodian is in apex_assignments and has no equipment_id
+    const { data: existingAssignment } = await adminClient
+      .from('apex_assignments')
+      .select('id, equipment_id')
+      .eq('request_id', requestId)
+      .eq('user_id', custodianId)
+      .maybeSingle()
+
+    if (existingAssignment && !existingAssignment.equipment_id) {
+      await adminClient
+        .from('apex_assignments')
+        .update({ equipment_id: equipmentId })
+        .eq('id', existingAssignment.id)
+    }
+
+    // 5. Insert checkout / reservation in equipment_assignments
+    const { data: newEqAssign, error: insertErr } = await adminClient
+      .from('equipment_assignments')
+      .insert({
+        equipment_id: equipmentId,
+        assigned_to: custodianId,
+        assigned_by: profile.id,
+        apex_request_id: requestId,
+        checked_out_at: new Date().toISOString(),
+        notes: req?.status === 'ongoing' ? 'In Use' : 'Reserved for Shoot',
+      })
+      .select()
+      .single()
+
+    if (insertErr) throw insertErr
+
+    // 6. If request is ongoing, mark equipment assigned
+    if (req?.status === 'ongoing') {
+      await adminClient
+        .from('equipment')
+        .update({ status: 'assigned' })
+        .eq('id', equipmentId)
+    }
+
+    revalidatePath(`/admin/apex/${requestId}`)
+    revalidatePath('/admin/apex')
+    revalidatePath('/my-assignments')
+    return { success: true, data: newEqAssign }
+  } catch (error: any) {
+    console.error('Error in allocateEquipmentToApex:', error)
+    return { error: error.message || 'Failed to allocate equipment' }
+  }
+}
+
+// 16. ADMIN: Remove / return equipment from a shoot
+export async function removeEquipmentFromApex(equipmentAssignmentId: string, equipmentId: string, requestId: string) {
+  try {
+    const profile = await getCurrentProfile()
+    if (!profile || (!isAdminOrBoard(profile.role) && !canAccessCamera(profile.role))) {
+      throw new Error('Unauthorized')
+    }
+
+    const adminClient = await createAdminClient()
+
+    // 1. Mark equipment available
+    await adminClient
+      .from('equipment')
+      .update({ status: 'available' })
+      .eq('id', equipmentId)
+
+    // 2. Mark returned in equipment_assignments
+    if (equipmentAssignmentId) {
+      await adminClient
+        .from('equipment_assignments')
+        .update({ returned_at: new Date().toISOString() })
+        .eq('id', equipmentAssignmentId)
+    } else {
+      await adminClient
+        .from('equipment_assignments')
+        .update({ returned_at: new Date().toISOString() })
+        .eq('apex_request_id', requestId)
+        .eq('equipment_id', equipmentId)
+        .is('returned_at', null)
+    }
+
+    // 3. Clear equipment_id in apex_assignments if it references this equipment
+    await adminClient
+      .from('apex_assignments')
+      .update({ equipment_id: null })
+      .eq('request_id', requestId)
+      .eq('equipment_id', equipmentId)
+
+    revalidatePath(`/admin/apex/${requestId}`)
+    revalidatePath('/admin/apex')
+    revalidatePath('/my-assignments')
+    return { success: true }
+  } catch (error: any) {
+    console.error('Error in removeEquipmentFromApex:', error)
+    return { error: error.message || 'Failed to remove equipment' }
   }
 }
 

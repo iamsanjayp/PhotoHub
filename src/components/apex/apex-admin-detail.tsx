@@ -12,7 +12,9 @@ import {
   assignTeamMember, 
   removeAssignment, 
   updateApexStatus, 
-  deleteApexMedia 
+  deleteApexMedia,
+  allocateEquipmentToApex,
+  removeEquipmentFromApex
 } from '@/actions/apex'
 import { 
   Send, 
@@ -31,7 +33,8 @@ import {
   HardDrive,
   UserCheck,
   ExternalLink,
-  Camera
+  Camera,
+  Plus
 } from 'lucide-react'
 import { MemberSearchCombobox } from './member-search-combobox'
 import { toast } from 'sonner'
@@ -56,6 +59,11 @@ export default function ApexAdminDetail({
   const [selectedMemberId, setSelectedMemberId] = useState('')
   const [selectedRole, setSelectedRole] = useState('photographer')
   const [selectedEquipmentId, setSelectedEquipmentId] = useState('')
+
+  // Gear allocation states
+  const [allocGearId, setAllocGearId] = useState('')
+  const [allocCustodianId, setAllocCustodianId] = useState('')
+  const [showAllocateDialog, setShowAllocateDialog] = useState(false)
 
   // Filter usable equipment (exclude maintenance and retired)
   const usableEquipment = equipmentList.filter(e => e.status !== 'maintenance' && e.status !== 'retired')
@@ -125,6 +133,70 @@ export default function ApexAdminDetail({
       }
     })
   }
+
+  const handleAllocateEquipment = async (e: React.FormEvent) => {
+    e.preventDefault()
+    if (!allocGearId) {
+      toast.error('Please select an equipment item')
+      return
+    }
+    if (!allocCustodianId) {
+      toast.error('Please select a designated custodian')
+      return
+    }
+
+    startTransition(async () => {
+      const res = await allocateEquipmentToApex(request.id, allocGearId, allocCustodianId)
+      if (res.error) {
+        toast.error(res.error)
+      } else {
+        toast.success('Equipment allocated to shoot successfully!')
+        setAllocGearId('')
+        setAllocCustodianId('')
+        setShowAllocateDialog(false)
+        router.refresh()
+      }
+    })
+  }
+
+  const handleRemoveEquipment = async (eqAssignmentId: string, eqId: string) => {
+    if (!confirm('Remove / return this equipment from the shoot?')) return
+    startTransition(async () => {
+      const res = await removeEquipmentFromApex(eqAssignmentId, eqId, request.id)
+      if (res.error) {
+        toast.error(res.error)
+      } else {
+        toast.success('Equipment removed from shoot')
+        router.refresh()
+      }
+    })
+  }
+
+  const allocatedGearItems = (() => {
+    const map = new Map<string, { equipment: any; custodian: any; eqAssignmentId?: string; assignmentId?: string }>()
+
+    for (const ea of (request.equipment_assignments || [])) {
+      if (ea.equipment && !ea.returned_at) {
+        map.set(ea.equipment.id, {
+          equipment: ea.equipment,
+          custodian: ea.profiles,
+          eqAssignmentId: ea.id,
+        })
+      }
+    }
+
+    for (const a of (request.assignments || [])) {
+      if (a.equipment && !map.has(a.equipment.id)) {
+        map.set(a.equipment.id, {
+          equipment: a.equipment,
+          custodian: a.profiles,
+          assignmentId: a.id,
+        })
+      }
+    }
+
+    return Array.from(map.values())
+  })()
 
   const getStatusBadge = (status: string) => {
     const styles: Record<string, string> = {
@@ -318,49 +390,144 @@ export default function ApexAdminDetail({
           ) : (
             <div className="grid grid-cols-1 xl:grid-cols-3 gap-6">
               {/* Assignments List */}
-              <div className="xl:col-span-2 space-y-4">
-                <h3 className="text-md font-bold text-white px-1">Crews Assigned ({request.assignments?.length || 0})</h3>
-                {request.assignments?.length === 0 ? (
-                  <Card className="border border-dashed border-white/5 bg-black/20 rounded-2xl p-8 text-center text-sm text-neutral-500">
-                    No team members assigned yet. Use the assignment panel to assign photographers, videographers, or editors.
-                  </Card>
-                ) : (
-                  <div className="space-y-3">
-                    {(() => {
-                      const shootEquipmentAssignment = (request.assignments || []).find((a: any) => a.equipment)
-                      const shootEquipment = shootEquipmentAssignment?.equipment
-                      const cameraCustodian = shootEquipmentAssignment?.profiles
-                      if (!shootEquipment) return null
+              <div className="xl:col-span-2 space-y-6">
+                {/* Allocated Equipment Section */}
+                <div className="space-y-3">
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-2">
+                      <Camera className="h-4 w-4 text-cyan-400" />
+                      <h3 className="text-md font-bold text-white px-1">
+                        Allocated Shoot Cameras & Gear ({allocatedGearItems.length})
+                      </h3>
+                    </div>
+                    <Button
+                      type="button"
+                      size="sm"
+                      variant="outline"
+                      onClick={() => setShowAllocateDialog(!showAllocateDialog)}
+                      className="border-cyan-500/30 bg-cyan-500/5 text-cyan-400 hover:bg-cyan-500/10 hover:text-cyan-300 font-bold rounded-xl h-8 px-3 text-xs gap-1.5"
+                    >
+                      <Plus className="h-3.5 w-3.5" />
+                      {showAllocateDialog ? 'Cancel' : 'Allocate Camera / Gear'}
+                    </Button>
+                  </div>
 
-                      return (
-                        <Card className="border border-cyan-500/20 bg-cyan-500/5 p-4 flex items-center justify-between gap-4 rounded-xl">
-                          <div className="flex items-center gap-3">
-                            <div className="h-10 w-10 rounded-xl bg-cyan-500/10 border border-cyan-500/20 flex items-center justify-center shrink-0">
-                              <Camera className="h-5 w-5 text-cyan-400" />
+                  {/* Inline Allocation Card */}
+                  {showAllocateDialog && (
+                    <Card className="border border-cyan-500/30 bg-cyan-500/5 p-4 rounded-xl">
+                      <form onSubmit={handleAllocateEquipment} className="space-y-3">
+                        <h4 className="text-xs font-bold text-cyan-300 uppercase tracking-wider">
+                          Allocate Additional Camera / Gear
+                        </h4>
+                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                          <div className="space-y-1">
+                            <Label className="text-[10px] font-semibold text-neutral-400">Select Equipment</Label>
+                            <select
+                              value={allocGearId}
+                              onChange={(e) => setAllocGearId(e.target.value)}
+                              className="w-full border border-white/10 bg-neutral-950 text-white rounded-xl px-3 py-2 text-xs focus:border-cyan-500/30 h-10 focus:outline-none"
+                            >
+                              <option value="">Choose camera or gear...</option>
+                              {usableEquipment.map((eq) => (
+                                <option key={eq.id} value={eq.id}>
+                                  {eq.name} ({eq.type}){eq.status === 'assigned' ? ' — [In Use / Reserved]' : ''}
+                                </option>
+                              ))}
+                            </select>
+                          </div>
+                          <div className="space-y-1">
+                            <Label className="text-[10px] font-semibold text-neutral-400">Designated Custodian</Label>
+                            <MemberSearchCombobox
+                              members={members}
+                              selectedMemberId={allocCustodianId}
+                              onSelectMember={(m) => setAllocCustodianId(m ? m.id : '')}
+                              filterOnlyCameraHolders={true}
+                              placeholder="Search camera holder..."
+                            />
+                          </div>
+                        </div>
+                        <div className="flex justify-end gap-2 pt-1">
+                          <Button
+                            type="button"
+                            variant="ghost"
+                            size="sm"
+                            onClick={() => setShowAllocateDialog(false)}
+                            className="text-neutral-400 text-xs h-8"
+                          >
+                            Cancel
+                          </Button>
+                          <Button
+                            type="submit"
+                            disabled={isPending}
+                            size="sm"
+                            className="bg-cyan-500 hover:bg-cyan-400 text-black font-bold rounded-xl text-xs h-8 px-4"
+                          >
+                            {isPending ? 'Allocating...' : 'Confirm Allocation'}
+                          </Button>
+                        </div>
+                      </form>
+                    </Card>
+                  )}
+
+                  {allocatedGearItems.length === 0 ? (
+                    <Card className="border border-dashed border-white/5 bg-black/20 rounded-xl p-4 text-center text-xs text-neutral-500">
+                      No club cameras or gear currently allocated to this shoot.
+                    </Card>
+                  ) : (
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                      {allocatedGearItems.map((item) => (
+                        <Card
+                          key={item.equipment.id}
+                          className="border border-cyan-500/20 bg-cyan-500/5 p-3.5 flex items-start justify-between gap-3 rounded-xl"
+                        >
+                          <div className="flex items-start gap-3">
+                            <div className="h-9 w-9 rounded-xl bg-cyan-500/10 border border-cyan-500/20 flex items-center justify-center shrink-0 mt-0.5">
+                              <Camera className="h-4 w-4 text-cyan-400" />
                             </div>
                             <div>
-                              <div className="flex items-center gap-2">
-                                <span className="font-bold text-white text-sm">Allocated Shoot Gear: {shootEquipment.name}</span>
-                                <Badge className="bg-cyan-500/20 text-cyan-300 border-none text-[9px] uppercase tracking-wider">
-                                  {shootEquipment.type}
+                              <div className="flex items-center gap-1.5 flex-wrap">
+                                <span className="font-bold text-white text-xs">{item.equipment.name}</span>
+                                <Badge className="bg-cyan-500/20 text-cyan-300 border-none text-[9px] uppercase tracking-wider capitalize">
+                                  {item.equipment.type}
                                 </Badge>
                               </div>
-                              <div className="text-xs text-neutral-400 flex items-center gap-2 mt-0.5 flex-wrap">
-                                <span>Model: {shootEquipment.model || shootEquipment.type}</span>
-                                <span>•</span>
-                                <span>Serial: {shootEquipment.serial_number || 'N/A'}</span>
-                                {cameraCustodian && (
-                                  <>
-                                    <span>•</span>
-                                    <span className="text-cyan-300 font-semibold">Custodian: {cameraCustodian.full_name}</span>
-                                  </>
+                              <div className="text-[11px] text-neutral-400 space-y-0.5 mt-0.5">
+                                <p>Model: {item.equipment.model || item.equipment.type} • S/N: {item.equipment.serial_number || 'N/A'}</p>
+                                {item.custodian && (
+                                  <p className="text-cyan-300 font-medium text-[10px]">
+                                    Custodian: <strong>{item.custodian.full_name}</strong>
+                                  </p>
                                 )}
                               </div>
                             </div>
                           </div>
+
+                          <Button
+                            type="button"
+                            variant="ghost"
+                            size="icon"
+                            onClick={() => handleRemoveEquipment(item.eqAssignmentId || '', item.equipment.id)}
+                            disabled={isPending}
+                            className="h-7 w-7 text-neutral-400 hover:text-red-400 hover:bg-red-500/10 rounded-lg shrink-0"
+                            title="Return / Remove Equipment"
+                          >
+                            <Trash2 className="h-3.5 w-3.5" />
+                          </Button>
                         </Card>
-                      )
-                    })()}
+                      ))}
+                    </div>
+                  )}
+                </div>
+
+                {/* Crews Assigned */}
+                <div className="space-y-4 pt-2 border-t border-white/5">
+                  <h3 className="text-md font-bold text-white px-1">Crews Assigned ({request.assignments?.length || 0})</h3>
+                  {request.assignments?.length === 0 ? (
+                    <Card className="border border-dashed border-white/5 bg-black/20 rounded-2xl p-8 text-center text-sm text-neutral-500">
+                      No team members assigned yet. Use the assignment panel to assign photographers, videographers, or editors.
+                    </Card>
+                  ) : (
+                    <div className="space-y-3">
                     {request.assignments.map((assignment: any) => (
                       <Card key={assignment.id} className="border-white/5 bg-black/30 p-4 flex flex-col sm:flex-row justify-between sm:items-center gap-4">
                         <div className="flex items-center gap-3">
@@ -419,8 +586,9 @@ export default function ApexAdminDetail({
                   </div>
                 )}
               </div>
+            </div>
 
-              {/* Assignment Form */}
+            {/* Assignment Form */}
               <div className="space-y-4">
                 <h3 className="text-md font-bold text-white px-1">Assign Teammate</h3>
                 <Card className="border-white/5 bg-black/40 backdrop-blur-xl rounded-2xl p-5">

@@ -94,9 +94,14 @@ export function ScheduleShootDialog({
   const [coverageType, setCoverageType] = useState<'photography' | 'videography' | 'both'>('both')
   const [notes, setNotes] = useState('')
 
-  // Shoot-level Gear allocation
-  const [selectedEquipmentId, setSelectedEquipmentId] = useState('none')
-  const [selectedCustodianId, setSelectedCustodianId] = useState(() => currentUser?.id || '')
+  interface AllocatedGearRow {
+    id: string
+    equipment_id: string
+    custodian_id: string
+  }
+
+  // Shoot-level Gear allocation (supports multiple cameras/gear items)
+  const [allocatedGear, setAllocatedGear] = useState<AllocatedGearRow[]>([])
 
   // Crew rows
   const [crew, setCrew] = useState<CrewRow[]>(() => {
@@ -132,21 +137,47 @@ export function ScheduleShootDialog({
   // Usable equipment: exclude retired and maintenance
   const usableEquipment = equipmentList.filter((e) => e.status !== 'maintenance' && e.status !== 'retired')
 
-  // Auto-set custodian if needed
-  useEffect(() => {
-    if (selectedEquipmentId !== 'none' && !selectedCustodianId) {
-      // Find eligible member from crew
-      const eligibleCrew = crew.find((c) => {
-        const m = members.find((mem) => mem.id === c.user_id) || (currentUser && c.user_id === currentUser.id ? currentUser : null)
-        return m ? canAccessCamera(m.role) : false
+  const handleAddGearRow = () => {
+    const eligibleCrew = crew.find((c) => {
+      const m = members.find((mem) => mem.id === c.user_id) || (currentUser && c.user_id === currentUser.id ? currentUser : null)
+      return m ? canAccessCamera(m.role) : false
+    })
+    const defaultCustodian = eligibleCrew?.user_id || (currentUser && canAccessCamera(currentUser.role) ? currentUser.id : '')
+
+    setAllocatedGear((prev) => [
+      ...prev,
+      {
+        id: Math.random().toString(36).substring(7),
+        equipment_id: '',
+        custodian_id: defaultCustodian,
+      },
+    ])
+  }
+
+  const handleRemoveGearRow = (id: string) => {
+    setAllocatedGear((prev) => prev.filter((g) => g.id !== id))
+  }
+
+  const handleGearChange = (id: string, field: 'equipment_id' | 'custodian_id', value: string) => {
+    setAllocatedGear((prev) =>
+      prev.map((g) => {
+        if (g.id !== id) return g
+        const updated = { ...g, [field]: value }
+        if (field === 'equipment_id') {
+          const eq = usableEquipment.find((item) => item.id === value)
+          if (eq?.type === 'camera' && !updated.custodian_id) {
+            const eligibleCrew = crew.find((c) => {
+              const m = members.find((mem) => mem.id === c.user_id) || (currentUser && c.user_id === currentUser.id ? currentUser : null)
+              return m ? canAccessCamera(m.role) : false
+            })
+            if (eligibleCrew) updated.custodian_id = eligibleCrew.user_id
+            else if (currentUser && canAccessCamera(currentUser.role)) updated.custodian_id = currentUser.id
+          }
+        }
+        return updated
       })
-      if (eligibleCrew) {
-        setSelectedCustodianId(eligibleCrew.user_id)
-      } else if (currentUser && canAccessCamera(currentUser.role)) {
-        setSelectedCustodianId(currentUser.id)
-      }
-    }
-  }, [selectedEquipmentId, selectedCustodianId, crew, members, currentUser])
+    )
+  }
 
   const handleAddCrewRow = () => {
     setCrew((prev) => [
@@ -183,8 +214,7 @@ export function ScheduleShootDialog({
     setEndTime('')
     setCoverageType('both')
     setNotes('')
-    setSelectedEquipmentId('none')
-    setSelectedCustodianId(currentUser?.id || '')
+    setAllocatedGear([])
     if (currentUser) {
       setCrew([
         {
@@ -231,28 +261,38 @@ export function ScheduleShootDialog({
       userIds.add(c.user_id)
     }
 
-    // Validate equipment custodian if equipment is selected
-    const isGearSelected = selectedEquipmentId && selectedEquipmentId !== 'none'
-    const selectedGearItem = isGearSelected ? equipmentList.find((item) => item.id === selectedEquipmentId) : null
-
-    if (isGearSelected && selectedGearItem?.type === 'camera') {
-      if (!selectedCustodianId) {
-        toast.error('Please select a designated Camera Custodian from the crew.')
+    // Validate allocated gear
+    const selectedGearIds = new Set<string>()
+    for (const gear of allocatedGear) {
+      if (!gear.equipment_id || gear.equipment_id === 'none') {
+        toast.error('Please select an equipment item for all allocated gear rows or remove empty rows.')
         return
       }
-      const custodianMember =
-        members.find((m) => m.id === selectedCustodianId) ||
-        (currentUser && currentUser.id === selectedCustodianId ? currentUser : null)
-
-      if (!custodianMember || !canAccessCamera(custodianMember.role)) {
-        toast.error('Designated Camera Custodian must be a Camera Holder (Admin, Board, or Committee Member).')
+      if (selectedGearIds.has(gear.equipment_id)) {
+        toast.error('Cannot allocate the same equipment item multiple times.')
         return
       }
+      selectedGearIds.add(gear.equipment_id)
 
-      // Ensure custodian is in the crew list
-      if (!userIds.has(selectedCustodianId)) {
-        toast.error('The designated Camera Custodian must also be in the assigned crew.')
-        return
+      const gearItem = equipmentList.find((item) => item.id === gear.equipment_id)
+      if (gearItem?.type === 'camera') {
+        if (!gear.custodian_id) {
+          toast.error(`Please select a designated Camera Custodian for ${gearItem.name}.`)
+          return
+        }
+        const custodianMember =
+          members.find((m) => m.id === gear.custodian_id) ||
+          (currentUser && currentUser.id === gear.custodian_id ? currentUser : null)
+
+        if (!custodianMember || !canAccessCamera(custodianMember.role)) {
+          toast.error(`Designated Camera Custodian for ${gearItem.name} must be a Camera Holder (Admin, Board, or Committee Member).`)
+          return
+        }
+
+        if (!userIds.has(gear.custodian_id)) {
+          toast.error(`The designated Camera Custodian for ${gearItem.name} must also be in the assigned crew.`)
+          return
+        }
       }
     }
 
@@ -289,8 +329,12 @@ export function ScheduleShootDialog({
         coverage_type: coverageType,
         notes: combinedNotes || undefined,
         initial_status: 'assigned',
-        equipment_id: isGearSelected ? selectedEquipmentId : undefined,
-        camera_custodian_id: isGearSelected ? selectedCustodianId : undefined,
+        allocated_gear: allocatedGear.map((g) => ({
+          equipment_id: g.equipment_id,
+          custodian_id: g.custodian_id || undefined,
+        })),
+        equipment_id: allocatedGear[0]?.equipment_id || undefined,
+        camera_custodian_id: allocatedGear[0]?.custodian_id || undefined,
         crew: payloadCrew,
       })
 
@@ -497,98 +541,174 @@ export function ScheduleShootDialog({
             </div>
           </div>
 
-          {/* Section 2: Club Equipment & Camera Custodian */}
+          {/* Section 2: Club Equipment & Camera Custodians */}
           <div className="space-y-4 pt-4 border-t border-white/5">
-            <div>
-              <h4 className="text-xs font-bold uppercase tracking-wider text-cyan-400 flex items-center gap-1.5">
-                <Camera className="h-3.5 w-3.5" />
-                2. Club Camera & Gear Allocation
-              </h4>
-              <p className="text-[11px] text-neutral-500 mt-0.5">
-                Allocate a club camera for this shoot. The entire crew uses this gear, with one designated Camera Custodian responsible for collection.
-              </p>
+            <div className="flex items-center justify-between">
+              <div>
+                <h4 className="text-xs font-bold uppercase tracking-wider text-cyan-400 flex items-center gap-1.5">
+                  <Camera className="h-3.5 w-3.5" />
+                  2. Club Camera & Gear Allocation ({allocatedGear.length})
+                </h4>
+                <p className="text-[11px] text-neutral-500 mt-0.5">
+                  Allocate club cameras and gear for this shoot. Each camera must have a designated Camera Custodian from the crew.
+                </p>
+              </div>
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                onClick={handleAddGearRow}
+                className="border-cyan-500/30 bg-cyan-500/5 text-cyan-400 hover:bg-cyan-500/10 hover:text-cyan-300 font-bold rounded-xl h-8 px-3 text-xs gap-1.5"
+              >
+                <Plus className="h-3.5 w-3.5" />
+                Allocate Camera / Gear
+              </Button>
             </div>
 
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 bg-white/[0.015] border border-white/5 p-4 rounded-2xl">
-              {/* Gear Selection */}
-              <div className="space-y-1.5">
-                <Label className="text-neutral-300 font-semibold text-xs">Club Equipment</Label>
-                <Select value={selectedEquipmentId} onValueChange={setSelectedEquipmentId}>
-                  <SelectTrigger className="w-full h-10 border-white/10 bg-neutral-900 text-xs rounded-xl text-neutral-200">
-                    <SelectValue placeholder="Select Equipment">
-                      {(val) => {
-                        if (!val || val === 'none') return 'None / Team Personal Gear'
-                        const eq = usableEquipment.find((item) => item.id === val)
-                        if (!eq) return 'None / Team Personal Gear'
-                        return `${eq.name} (${eq.type})`
-                      }}
-                    </SelectValue>
-                  </SelectTrigger>
-                  <SelectContent className="bg-neutral-900 border-white/10 text-neutral-200 max-h-56">
-                    <SelectItem value="none" className="text-xs focus:bg-white/5">
-                      None / Team Personal Gear
-                    </SelectItem>
-                    {usableEquipment.map((eq) => {
-                      const isInUse = eq.is_currently_in_use
-                      const upcoming = eq.upcoming_reservation
+            {allocatedGear.length === 0 ? (
+              <div className="border border-dashed border-white/5 bg-white/[0.01] rounded-2xl p-6 text-center space-y-2">
+                <p className="text-xs text-neutral-400">
+                  No club cameras or gear allocated yet. (Crew will use personal equipment).
+                </p>
+                <Button
+                  type="button"
+                  size="sm"
+                  onClick={handleAddGearRow}
+                  className="bg-cyan-500/10 text-cyan-300 border border-cyan-500/20 hover:bg-cyan-500/20 font-bold rounded-xl text-xs h-8 px-3 gap-1.5"
+                >
+                  <Plus className="h-3 w-3" />
+                  Allocate Club Camera / Gear
+                </Button>
+              </div>
+            ) : (
+              <div className="space-y-3">
+                {allocatedGear.map((gear, index) => {
+                  const selectedItem = usableEquipment.find((item) => item.id === gear.equipment_id)
+                  const isCamera = selectedItem?.type === 'camera'
+                  const otherAllocatedEqIds = allocatedGear.filter((g) => g.id !== gear.id).map((g) => g.equipment_id)
 
-                      return (
-                        <SelectItem key={eq.id} value={eq.id} className="text-xs focus:bg-white/5">
-                          <div className="flex items-center justify-between w-full gap-2">
-                            <span className="capitalize">
-                              {eq.name} ({eq.type})
+                  return (
+                    <div
+                      key={gear.id}
+                      className="border border-white/5 bg-white/[0.015] hover:border-white/10 p-3.5 rounded-2xl space-y-3 transition-colors"
+                    >
+                      <div className="flex items-center justify-between">
+                        <div className="flex items-center gap-2">
+                          <span className="text-[11px] font-mono font-bold text-neutral-500">Gear #{index + 1}</span>
+                          {selectedItem ? (
+                            <Badge className="bg-cyan-500/15 text-cyan-400 border border-cyan-500/30 text-[9px] uppercase tracking-wider px-2 py-0.5 rounded-full capitalize">
+                              {selectedItem.type}
+                            </Badge>
+                          ) : (
+                            <Badge variant="outline" className="text-[9px] border-white/10 text-neutral-400">
+                              Unselected
+                            </Badge>
+                          )}
+                          {selectedItem?.serial_number && (
+                            <span className="text-[10px] text-neutral-500 font-mono">
+                              S/N: {selectedItem.serial_number}
                             </span>
-                            {isInUse ? (
-                              <Badge className="bg-red-500/15 text-red-400 border border-red-500/20 text-[9px] px-1 py-0">
-                                In Use
-                              </Badge>
-                            ) : upcoming ? (
-                              <Badge className="bg-amber-500/15 text-amber-300 border border-amber-500/20 text-[9px] px-1 py-0">
-                                Booked {upcoming.event_date ? `(${upcoming.event_date})` : ''}
-                              </Badge>
-                            ) : (
-                              <Badge className="bg-emerald-500/15 text-emerald-400 border border-emerald-500/20 text-[9px] px-1 py-0">
-                                Available
-                              </Badge>
+                          )}
+                        </div>
+
+                        <Button
+                          type="button"
+                          variant="ghost"
+                          size="icon"
+                          onClick={() => handleRemoveGearRow(gear.id)}
+                          className="h-7 w-7 text-neutral-500 hover:text-red-400 hover:bg-red-500/10 rounded-lg"
+                        >
+                          <Trash2 className="h-3.5 w-3.5" />
+                        </Button>
+                      </div>
+
+                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                        {/* Equipment dropdown */}
+                        <div className="space-y-1">
+                          <Label className="text-[10px] font-semibold text-neutral-400">Club Equipment</Label>
+                          <Select
+                            value={gear.equipment_id}
+                            onValueChange={(val) => handleGearChange(gear.id, 'equipment_id', val || '')}
+                          >
+                            <SelectTrigger className="w-full h-10 border-white/10 bg-neutral-900 text-xs rounded-xl text-neutral-200">
+                              <SelectValue placeholder="Select Equipment">
+                                {(val) => {
+                                  if (!val) return 'Select equipment...'
+                                  const eq = usableEquipment.find((item) => item.id === val)
+                                  if (!eq) return 'Select equipment...'
+                                  return `${eq.name} (${eq.type})`
+                                }}
+                              </SelectValue>
+                            </SelectTrigger>
+                            <SelectContent className="bg-neutral-900 border-white/10 text-neutral-200 max-h-56">
+                              {usableEquipment.map((eq) => {
+                                const isAlreadyPicked = otherAllocatedEqIds.includes(eq.id)
+                                const isInUse = eq.is_currently_in_use
+                                const upcoming = eq.upcoming_reservation
+
+                                return (
+                                  <SelectItem
+                                    key={eq.id}
+                                    value={eq.id}
+                                    disabled={isAlreadyPicked}
+                                    className="text-xs focus:bg-white/5"
+                                  >
+                                    <div className="flex items-center justify-between w-full gap-2">
+                                      <span className={cn('capitalize', isAlreadyPicked && 'opacity-40')}>
+                                        {eq.name} ({eq.type}){isAlreadyPicked ? ' (Selected)' : ''}
+                                      </span>
+                                      {isInUse ? (
+                                        <Badge className="bg-red-500/15 text-red-400 border border-red-500/20 text-[9px] px-1 py-0">
+                                          In Use
+                                        </Badge>
+                                      ) : upcoming ? (
+                                        <Badge className="bg-amber-500/15 text-amber-300 border border-amber-500/20 text-[9px] px-1 py-0">
+                                          Booked
+                                        </Badge>
+                                      ) : (
+                                        <Badge className="bg-emerald-500/15 text-emerald-400 border border-emerald-500/20 text-[9px] px-1 py-0">
+                                          Available
+                                        </Badge>
+                                      )}
+                                    </div>
+                                  </SelectItem>
+                                )
+                              })}
+                            </SelectContent>
+                          </Select>
+                        </div>
+
+                        {/* Custodian picker */}
+                        <div className="space-y-1">
+                          <Label className="text-[10px] font-semibold text-neutral-400 flex items-center justify-between">
+                            <span>Designated Custodian</span>
+                            {isCamera && (
+                              <span className="text-[9px] text-cyan-400 font-normal">(Camera Holder only)</span>
                             )}
-                          </div>
-                        </SelectItem>
-                      )
-                    })}
-                  </SelectContent>
-                </Select>
-              </div>
+                          </Label>
+                          <MemberSearchCombobox
+                            members={members}
+                            selectedMemberId={gear.custodian_id}
+                            onSelectMember={(mem) => handleGearChange(gear.id, 'custodian_id', mem ? mem.id : '')}
+                            filterOnlyCameraHolders={isCamera}
+                            placeholder="Search crew custodian..."
+                          />
+                        </div>
+                      </div>
 
-              {/* Custodian Selection (if gear selected) */}
-              <div className="space-y-1.5">
-                <Label className="text-neutral-300 font-semibold text-xs flex items-center justify-between">
-                  <span>Camera Custodian</span>
-                  <span className="text-[10px] text-cyan-400 font-normal">(Camera Holder only)</span>
-                </Label>
-                {selectedEquipmentId === 'none' ? (
-                  <div className="h-10 px-3 border border-dashed border-white/10 rounded-xl flex items-center text-xs text-neutral-500">
-                    No camera allocated
-                  </div>
-                ) : (
-                  <MemberSearchCombobox
-                    members={members}
-                    selectedMemberId={selectedCustodianId}
-                    onSelectMember={(mem) => setSelectedCustodianId(mem ? mem.id : '')}
-                    filterOnlyCameraHolders={true}
-                    placeholder="Search camera holder..."
-                  />
-                )}
+                      {selectedItem && (
+                        <div className="flex items-center gap-2 text-[11px] text-cyan-300 bg-cyan-500/5 border border-cyan-500/10 px-3 py-1.5 rounded-xl">
+                          <ShieldCheck className="h-3.5 w-3.5 shrink-0 text-cyan-400" />
+                          <span>
+                            {selectedItem.name} • {selectedItem.model || selectedItem.type} (S/N: {selectedItem.serial_number || 'N/A'}). Status updates to assigned when shoot starts.
+                          </span>
+                        </div>
+                      )}
+                    </div>
+                  )
+                })}
               </div>
-
-              {selectedGear && (
-                <div className="sm:col-span-2 flex items-center gap-2 text-[11px] text-cyan-300 bg-cyan-500/5 border border-cyan-500/10 px-3 py-2 rounded-xl">
-                  <ShieldCheck className="h-4 w-4 shrink-0 text-cyan-400" />
-                  <span>
-                    Camera: <strong>{selectedGear.name}</strong> • S/N: {selectedGear.serial_number || 'N/A'}. Will remain marked available until shoot day check-in.
-                  </span>
-                </div>
-              )}
-            </div>
+            )}
           </div>
 
           {/* Section 3: Assigned Crew Members */}
@@ -619,14 +739,15 @@ export function ScheduleShootDialog({
               {crew.map((c, index) => {
                 const isSelf = currentUser ? c.user_id === currentUser.id : false
                 const otherAssignedIds = crew.filter((cr) => cr.id !== c.id).map((cr) => cr.user_id)
+                const crewMemberGear = allocatedGear.filter((g) => g.custodian_id === c.user_id && g.equipment_id)
 
                 return (
                   <div
                     key={c.id}
                     className="border border-white/5 bg-white/[0.015] hover:border-white/10 p-3.5 rounded-2xl space-y-2.5 transition-colors"
                   >
-                    <div className="flex items-center justify-between">
-                      <div className="flex items-center gap-2">
+                    <div className="flex items-center justify-between flex-wrap gap-2">
+                      <div className="flex items-center gap-2 flex-wrap">
                         <span className="text-[11px] font-mono font-bold text-neutral-500">#{index + 1}</span>
                         {isSelf ? (
                           <Badge className="bg-cyan-500/15 text-cyan-400 border border-cyan-500/30 text-[9px] uppercase tracking-wider px-2 py-0.5 rounded-full flex items-center gap-1">
@@ -638,12 +759,18 @@ export function ScheduleShootDialog({
                             Pending Invite
                           </Badge>
                         )}
-                        {c.user_id === selectedCustodianId && selectedEquipmentId !== 'none' && (
-                          <Badge className="bg-purple-500/15 text-purple-300 border border-purple-500/30 text-[9px] uppercase tracking-wider px-2 py-0.5 rounded-full flex items-center gap-1">
-                            <Camera className="h-2.5 w-2.5" />
-                            Gear Custodian
-                          </Badge>
-                        )}
+                        {crewMemberGear.map((g) => {
+                          const eq = usableEquipment.find((item) => item.id === g.equipment_id)
+                          return (
+                            <Badge
+                              key={g.id}
+                              className="bg-purple-500/15 text-purple-300 border border-purple-500/30 text-[9px] uppercase tracking-wider px-2 py-0.5 rounded-full flex items-center gap-1"
+                            >
+                              <Camera className="h-2.5 w-2.5" />
+                              Custodian: {eq?.name || 'Gear'}
+                            </Badge>
+                          )
+                        })}
                       </div>
 
                       {(!isSelf || crew.length > 1) && (
