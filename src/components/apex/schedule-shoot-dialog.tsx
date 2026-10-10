@@ -15,13 +15,6 @@ import { Label } from '@/components/ui/label'
 import { Textarea } from '@/components/ui/textarea'
 import { Badge } from '@/components/ui/badge'
 import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from '@/components/ui/select'
-import {
   Plus,
   Camera,
   Video,
@@ -349,8 +342,6 @@ export function ScheduleShootDialog({
     })
   }
 
-  const selectedGear = usableEquipment.find((e) => e.id === selectedEquipmentId)
-
   return (
     <Dialog open={isOpen} onOpenChange={setIsOpen}>
       {trigger ? (
@@ -626,56 +617,29 @@ export function ScheduleShootDialog({
                         {/* Equipment dropdown */}
                         <div className="space-y-1">
                           <Label className="text-[10px] font-semibold text-neutral-400">Club Equipment</Label>
-                          <Select
+                          <select
                             value={gear.equipment_id}
-                            onValueChange={(val) => handleGearChange(gear.id, 'equipment_id', val || '')}
+                            onChange={(e) => handleGearChange(gear.id, 'equipment_id', e.target.value)}
+                            className="w-full border border-white/10 bg-neutral-900 text-white rounded-xl px-3 py-2 text-xs focus:border-cyan-500/30 h-10 focus:outline-none"
                           >
-                            <SelectTrigger className="w-full h-10 border-white/10 bg-neutral-900 text-xs rounded-xl text-neutral-200">
-                              <SelectValue placeholder="Select Equipment">
-                                {(val) => {
-                                  if (!val) return 'Select equipment...'
-                                  const eq = usableEquipment.find((item) => item.id === val)
-                                  if (!eq) return 'Select equipment...'
-                                  return `${eq.name} (${eq.type})`
-                                }}
-                              </SelectValue>
-                            </SelectTrigger>
-                            <SelectContent className="bg-neutral-900 border-white/10 text-neutral-200 max-h-56">
-                              {usableEquipment.map((eq) => {
-                                const isAlreadyPicked = otherAllocatedEqIds.includes(eq.id)
-                                const isInUse = eq.is_currently_in_use
-                                const upcoming = eq.upcoming_reservation
+                            <option value="">Select equipment...</option>
+                            {usableEquipment.map((eq) => {
+                              const isAlreadyPicked = otherAllocatedEqIds.includes(eq.id)
+                              const isInUse = eq.is_currently_in_use
+                              const upcoming = eq.upcoming_reservation
+                              const statusLabel = isInUse ? ' [In Use]' : upcoming ? ' [Booked]' : ' [Available]'
 
-                                return (
-                                  <SelectItem
-                                    key={eq.id}
-                                    value={eq.id}
-                                    disabled={isAlreadyPicked}
-                                    className="text-xs focus:bg-white/5"
-                                  >
-                                    <div className="flex items-center justify-between w-full gap-2">
-                                      <span className={cn('capitalize', isAlreadyPicked && 'opacity-40')}>
-                                        {eq.name} ({eq.type}){isAlreadyPicked ? ' (Selected)' : ''}
-                                      </span>
-                                      {isInUse ? (
-                                        <Badge className="bg-red-500/15 text-red-400 border border-red-500/20 text-[9px] px-1 py-0">
-                                          In Use
-                                        </Badge>
-                                      ) : upcoming ? (
-                                        <Badge className="bg-amber-500/15 text-amber-300 border border-amber-500/20 text-[9px] px-1 py-0">
-                                          Booked
-                                        </Badge>
-                                      ) : (
-                                        <Badge className="bg-emerald-500/15 text-emerald-400 border border-emerald-500/20 text-[9px] px-1 py-0">
-                                          Available
-                                        </Badge>
-                                      )}
-                                    </div>
-                                  </SelectItem>
-                                )
-                              })}
-                            </SelectContent>
-                          </Select>
+                              return (
+                                <option
+                                  key={eq.id}
+                                  value={eq.id}
+                                  disabled={isAlreadyPicked}
+                                >
+                                  {eq.name} ({eq.type}){statusLabel}{isAlreadyPicked ? ' — (Selected in other row)' : ''}
+                                </option>
+                              )
+                            })}
+                          </select>
                         </div>
 
                         {/* Custodian picker */}
@@ -802,32 +766,15 @@ export function ScheduleShootDialog({
                       {/* Role selection */}
                       <div className="space-y-1">
                         <Label className="text-[10px] font-semibold text-neutral-400">Role</Label>
-                        <Select
+                        <select
                           value={c.role}
-                          onValueChange={(val: any) => handleCrewChange(c.id, 'role', val || 'photographer')}
+                          onChange={(e) => handleCrewChange(c.id, 'role', e.target.value as any)}
+                          className="w-full border border-white/10 bg-neutral-900 text-white rounded-xl px-3 py-2 text-xs focus:border-cyan-500/30 h-10 focus:outline-none capitalize"
                         >
-                          <SelectTrigger className="w-full h-10 border-white/10 bg-neutral-900 text-xs rounded-xl text-neutral-200 capitalize">
-                            <SelectValue placeholder="Role">
-                              {(val) => {
-                                if (val === 'photographer') return '📷 Photographer'
-                                if (val === 'videographer') return '🎥 Videographer'
-                                if (val === 'editor') return '💻 Editor'
-                                return val || 'Role'
-                              }}
-                            </SelectValue>
-                          </SelectTrigger>
-                          <SelectContent className="bg-neutral-900 border-white/10 text-neutral-200">
-                            <SelectItem value="photographer" className="text-xs focus:bg-white/5">
-                              📷 Photographer
-                            </SelectItem>
-                            <SelectItem value="videographer" className="text-xs focus:bg-white/5">
-                              🎥 Videographer
-                            </SelectItem>
-                            <SelectItem value="editor" className="text-xs focus:bg-white/5">
-                              💻 Editor
-                            </SelectItem>
-                          </SelectContent>
-                        </Select>
+                          <option value="photographer">📷 Photographer</option>
+                          <option value="videographer">🎥 Videographer</option>
+                          <option value="editor">💻 Editor</option>
+                        </select>
                       </div>
                     </div>
                   </div>
