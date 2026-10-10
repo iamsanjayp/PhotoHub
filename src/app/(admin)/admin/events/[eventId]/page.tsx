@@ -1,6 +1,12 @@
 import type { Metadata } from 'next'
 import { notFound } from 'next/navigation'
-import { getEventById, getEventRegistrations, getEventAnalytics } from '@/actions/events'
+import {
+  getEventById,
+  getEventRegistrations,
+  getEventAnalytics,
+  getEventFeedbackAndMissedAttendance,
+  getEventOtpConfig,
+} from '@/actions/events'
 import { getSubmissions } from '@/actions/submissions'
 import AdminEventDashboard from '@/components/events/admin-event-dashboard'
 
@@ -27,12 +33,16 @@ export default async function AdminEventDetailPage({ params }: AdminEventDetailP
     eventRes,
     registrationsRes,
     submissionsRes,
-    analyticsRes
+    analyticsRes,
+    feedbackAndMissedRes,
+    otpConfigRes,
   ] = await Promise.all([
     getEventById(eventId),
     getEventRegistrations(eventId),
     getSubmissions('event', eventId),
-    getEventAnalytics(eventId)
+    getEventAnalytics(eventId),
+    getEventFeedbackAndMissedAttendance(eventId),
+    getEventOtpConfig(eventId),
   ])
 
   if (eventRes.error || !eventRes.data) {
@@ -45,6 +55,9 @@ export default async function AdminEventDetailPage({ params }: AdminEventDetailP
       registrations={registrationsRes.data || []}
       submissions={submissionsRes.data || []}
       analytics={analyticsRes.data || { registered: 0, attended: 0, submitted: 0, attendance_rate: 0, submission_rate: 0 }}
+      initialFeedbacks={feedbackAndMissedRes.data?.feedbacks || []}
+      initialMissedAttendance={feedbackAndMissedRes.data?.missedAttendance || []}
+      initialOtpConfig={otpConfigRes.data || { active: false, otp: '' }}
     />
   )
 }

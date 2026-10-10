@@ -13,8 +13,21 @@ import { Label } from '@/components/ui/label'
 import { 
   markAttendance, 
   bulkMarkAttendance, 
-  selectWinners 
+  selectWinners,
+  setEventAttendanceOtp
 } from '@/actions/events'
+import {
+  addMissedAttendanceRecord,
+  deleteMissedAttendanceRecord
+} from '@/actions/missed-attendance'
+import { exportMissedAttendanceToXlsx } from '@/lib/export-xlsx'
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogDescription,
+} from '@/components/ui/dialog'
 import { 
   scoreSubmission, 
   updateSubmissionStatus 
@@ -36,7 +49,16 @@ import {
   Square,
   Trophy,
   Loader2,
-  Sparkles
+  Sparkles,
+  KeyRound,
+  Tv,
+  FileSpreadsheet,
+  Star,
+  Trash2,
+  Plus,
+  GraduationCap,
+  Copy,
+  CheckCircle2
 } from 'lucide-react'
 import { toast } from 'sonner'
 import { cn } from '@/lib/utils'
@@ -48,13 +70,19 @@ interface AdminEventDashboardProps {
   registrations: any[]
   submissions: any[]
   analytics: any
+  initialFeedbacks?: any[]
+  initialMissedAttendance?: any[]
+  initialOtpConfig?: { active: boolean; otp?: string }
 }
 
 export default function AdminEventDashboard({
   event,
   registrations: initialRegistrations,
   submissions: initialSubmissions,
-  analytics: initialAnalytics
+  analytics: initialAnalytics,
+  initialFeedbacks,
+  initialMissedAttendance,
+  initialOtpConfig,
 }: AdminEventDashboardProps) {
   const router = useRouter()
   const [activeTab, setActiveTab] = useState('overview')
@@ -62,6 +90,21 @@ export default function AdminEventDashboard({
   const [submissions, setSubmissions] = useState(initialSubmissions)
   const [analytics, setAnalytics] = useState(initialAnalytics)
   const [selectedUserIds, setSelectedUserIds] = useState<string[]>([])
+
+  // Feedback & Missed Attendance State
+  const [feedbacks, setFeedbacks] = useState(initialFeedbacks || [])
+  const [missedAttendance, setMissedAttendance] = useState(initialMissedAttendance || [])
+  const [otpCode, setOtpCode] = useState(initialOtpConfig?.otp || '')
+  const [otpActive, setOtpActive] = useState(initialOtpConfig?.active || false)
+  const [projectorOpen, setProjectorOpen] = useState(false)
+  const [addMissedModalOpen, setAddMissedModalOpen] = useState(false)
+
+  // Manual Missed Attendance Form State
+  const [missedName, setMissedName] = useState('')
+  const [missedEmail, setMissedEmail] = useState('')
+  const [missedRollNumber, setMissedRollNumber] = useState('')
+  const [missedSelectedHours, setMissedSelectedHours] = useState<number[]>([1])
+  const [missedNotes, setMissedNotes] = useState('')
   
   // Scoring state
   const [editingSubmissionId, setEditingSubmissionId] = useState<string | null>(null)
@@ -74,6 +117,111 @@ export default function AdminEventDashboard({
   )
 
   const [isPending, startTransition] = useTransition()
+
+  // OTP Handlers
+  const handleSaveOtp = async (codeToSave: string, activeToSave: boolean) => {
+    if (!codeToSave.trim()) {
+      toast.error('Please enter an OTP code')
+      return
+    }
+    startTransition(async () => {
+      const res = await setEventAttendanceOtp(event.id, codeToSave.trim(), activeToSave)
+      if (res.error) {
+        toast.error(res.error)
+      } else {
+        toast.success(
+          activeToSave
+            ? `OTP check-in is now ACTIVE (${codeToSave.trim().toUpperCase()})`
+            : 'OTP check-in is now CLOSED'
+        )
+        setOtpCode(codeToSave.trim().toUpperCase())
+        setOtpActive(activeToSave)
+        router.refresh()
+      }
+    })
+  }
+
+  const handleGenerateRandomOtp = () => {
+    const code = Math.floor(100000 + Math.random() * 900000).toString()
+    setOtpCode(code)
+    handleSaveOtp(code, true)
+  }
+
+  const handleToggleOtpActive = () => {
+    const code = otpCode.trim() || Math.floor(100000 + Math.random() * 900000).toString()
+    if (!otpCode.trim()) setOtpCode(code)
+    handleSaveOtp(code, !otpActive)
+  }
+
+  const toggleMissedHour = (h: number) => {
+    setMissedSelectedHours((prev) =>
+      prev.includes(h) ? prev.filter((item) => item !== h) : [...prev, h].sort((a, b) => a - b)
+    )
+  }
+
+  const handleAddMissedAttendance = async (e: React.FormEvent) => {
+    e.preventDefault()
+    if (!missedName.trim() || !missedRollNumber.trim()) {
+      toast.error('Please provide student name and roll number')
+      return
+    }
+    if (missedSelectedHours.length === 0) {
+      toast.error('Please select at least one hour')
+      return
+    }
+
+    startTransition(async () => {
+      const res = await addMissedAttendanceRecord({
+        sourceType: 'event',
+        sourceId: event.id,
+        name: missedName.trim(),
+        email: missedEmail.trim(),
+        rollNumber: missedRollNumber.trim(),
+        hours: missedSelectedHours,
+        notes: missedNotes.trim() || undefined,
+      })
+      if (res.error) {
+        toast.error(res.error)
+      } else {
+        toast.success('Missed attendance record logged successfully')
+        setMissedAttendance((prev) => [res.data, ...prev])
+        setAddMissedModalOpen(false)
+        setMissedName('')
+        setMissedEmail('')
+        setMissedRollNumber('')
+        setMissedSelectedHours([1])
+        setMissedNotes('')
+        router.refresh()
+      }
+    })
+  }
+
+  const handleDeleteMissedAttendance = async (id: string) => {
+    startTransition(async () => {
+      const res = await deleteMissedAttendanceRecord(id, 'event', event.id)
+      if (res.error) {
+        toast.error(res.error)
+      } else {
+        toast.success('Record removed')
+        setMissedAttendance((prev) => prev.filter((r) => r.id !== id))
+        router.refresh()
+      }
+    })
+  }
+
+  const handleExportMissedAttendance = () => {
+    if (missedAttendance.length === 0) {
+      toast.error('No missed attendance records found to export')
+      return
+    }
+    exportMissedAttendanceToXlsx({
+      title: event.title,
+      date: event.start_date ? event.start_date.split('T')[0] : undefined,
+      sourceType: 'event',
+      items: missedAttendance,
+    })
+    toast.success('XLSX exported successfully (1 distinct row per missed hour)')
+  }
 
   // Attendance Handlers
   const handleToggleAttendance = async (userId: string, currentAttended: boolean) => {
@@ -271,12 +419,28 @@ export default function AdminEventDashboard({
 
       {/* Tabs Menu */}
       <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
-        <TabsList className="bg-black/40 border border-white/5 rounded-xl p-1 max-w-2xl h-11 text-xs flex overflow-x-auto whitespace-nowrap scrollbar-none w-full">
-          <TabsTrigger value="overview" className="rounded-lg py-2 px-4 font-bold data-[state=active]:bg-cyan-500 data-[state=active]:text-black text-white/70 flex-none">Overview</TabsTrigger>
-          <TabsTrigger value="attendance" className="rounded-lg py-2 px-4 font-bold data-[state=active]:bg-cyan-500 data-[state=active]:text-black text-white/70 flex-none">Attendance</TabsTrigger>
-          <TabsTrigger value="submissions" className="rounded-lg py-2 px-4 font-bold data-[state=active]:bg-cyan-500 data-[state=active]:text-black text-white/70 flex-none">Submissions</TabsTrigger>
-          <TabsTrigger value="winners" className="rounded-lg py-2 px-4 font-bold data-[state=active]:bg-cyan-500 data-[state=active]:text-black text-white/70 flex-none">Winners</TabsTrigger>
-          <TabsTrigger value="analytics" className="rounded-lg py-2 px-4 font-bold data-[state=active]:bg-cyan-500 data-[state=active]:text-black text-white/70 flex-none">Analytics</TabsTrigger>
+        <TabsList className="bg-black/40 border border-white/5 rounded-xl p-1 h-11 text-xs flex overflow-x-auto whitespace-nowrap scrollbar-none w-full">
+          <TabsTrigger value="overview" className="rounded-lg py-2 px-4 font-bold data-[state=active]:bg-cyan-500 data-[state=active]:text-black text-white/70 flex-none">
+            Overview
+          </TabsTrigger>
+          <TabsTrigger value="attendance" className="rounded-lg py-2 px-4 font-bold data-[state=active]:bg-cyan-500 data-[state=active]:text-black text-white/70 flex-none">
+            Attendance & OTP
+          </TabsTrigger>
+          <TabsTrigger value="missed-attendance" className="rounded-lg py-2 px-4 font-bold data-[state=active]:bg-cyan-500 data-[state=active]:text-black text-white/70 flex-none">
+            Missed Attendance {missedAttendance.length > 0 && `(${missedAttendance.length})`}
+          </TabsTrigger>
+          <TabsTrigger value="feedback" className="rounded-lg py-2 px-4 font-bold data-[state=active]:bg-cyan-500 data-[state=active]:text-black text-white/70 flex-none">
+            Feedback {feedbacks.length > 0 && `(${feedbacks.length})`}
+          </TabsTrigger>
+          <TabsTrigger value="submissions" className="rounded-lg py-2 px-4 font-bold data-[state=active]:bg-cyan-500 data-[state=active]:text-black text-white/70 flex-none">
+            Submissions
+          </TabsTrigger>
+          <TabsTrigger value="winners" className="rounded-lg py-2 px-4 font-bold data-[state=active]:bg-cyan-500 data-[state=active]:text-black text-white/70 flex-none">
+            Winners
+          </TabsTrigger>
+          <TabsTrigger value="analytics" className="rounded-lg py-2 px-4 font-bold data-[state=active]:bg-cyan-500 data-[state=active]:text-black text-white/70 flex-none">
+            Analytics
+          </TabsTrigger>
         </TabsList>
 
         {/* Tab 1: Overview */}
@@ -363,7 +527,100 @@ export default function AdminEventDashboard({
         </TabsContent>
 
         {/* Tab 2: Attendance */}
-        <TabsContent value="attendance" className="mt-6">
+        <TabsContent value="attendance" className="mt-6 space-y-6">
+          {/* Live OTP Attendance Controller Card */}
+          <Card className="border border-cyan-500/20 bg-gradient-to-r from-neutral-900/90 via-black to-neutral-900/90 backdrop-blur-xl rounded-2xl p-5 shadow-2xl">
+            <div className="flex flex-col lg:flex-row justify-between items-start lg:items-center gap-6">
+              <div className="space-y-1.5">
+                <div className="flex items-center gap-2.5">
+                  <div className="p-2 rounded-xl bg-cyan-500/10 text-cyan-400 border border-cyan-500/20">
+                    <KeyRound className="h-5 w-5" />
+                  </div>
+                  <div>
+                    <h3 className="text-base font-extrabold text-white flex items-center gap-2">
+                      Event OTP Check-In System
+                      <Badge className={cn(
+                        "text-[10px] font-bold uppercase",
+                        otpActive 
+                          ? "bg-emerald-500/10 text-emerald-400 border-emerald-500/20 animate-pulse" 
+                          : "bg-neutral-800 text-neutral-400 border-white/5"
+                      )}>
+                        {otpActive ? '● Active & Accepting' : '○ Closed'}
+                      </Badge>
+                    </h3>
+                    <p className="text-xs text-neutral-400">
+                      Eliminate manual check-in for 100+ attendees. Announce or project this OTP code for instant self check-in.
+                    </p>
+                  </div>
+                </div>
+              </div>
+
+              {/* Code Display & Quick Controls */}
+              <div className="flex flex-wrap items-center gap-3 w-full lg:w-auto">
+                <div className="flex items-center gap-2 bg-black/60 border border-white/10 rounded-xl px-3 py-1.5 h-11">
+                  <span className="text-[10px] font-bold text-neutral-500 uppercase tracking-wider">OTP:</span>
+                  <input
+                    type="text"
+                    value={otpCode}
+                    onChange={(e) => setOtpCode(e.target.value.toUpperCase())}
+                    placeholder="e.g. 849201"
+                    maxLength={10}
+                    className="bg-transparent font-mono font-extrabold text-cyan-400 text-lg w-28 text-center focus:outline-none uppercase"
+                  />
+                  {otpCode && (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        navigator.clipboard.writeText(otpCode)
+                        toast.success('OTP copied to clipboard')
+                      }}
+                      className="text-neutral-500 hover:text-white transition-colors"
+                      title="Copy OTP"
+                    >
+                      <Copy className="h-3.5 w-3.5" />
+                    </button>
+                  )}
+                </div>
+
+                <Button
+                  onClick={handleGenerateRandomOtp}
+                  disabled={isPending}
+                  size="sm"
+                  variant="outline"
+                  className="border-white/10 hover:bg-white/5 text-white text-xs font-bold rounded-xl h-11 px-3.5 flex items-center gap-1.5"
+                >
+                  <Sparkles className="h-3.5 w-3.5 text-cyan-400" />
+                  Generate Random
+                </Button>
+
+                <Button
+                  onClick={handleToggleOtpActive}
+                  disabled={isPending}
+                  size="sm"
+                  className={cn(
+                    "text-xs font-bold rounded-xl h-11 px-4 flex items-center gap-1.5 transition-all",
+                    otpActive
+                      ? "bg-red-500/10 hover:bg-red-500/20 text-red-400 border border-red-500/20"
+                      : "bg-gradient-to-r from-cyan-500 to-teal-500 text-black hover:opacity-90 shadow-lg shadow-cyan-500/10"
+                  )}
+                >
+                  {otpActive ? 'Close Check-In' : 'Activate Check-In'}
+                </Button>
+
+                <Button
+                  onClick={() => setProjectorOpen(true)}
+                  disabled={!otpCode}
+                  size="sm"
+                  className="bg-white/10 hover:bg-white/20 text-white text-xs font-bold rounded-xl h-11 px-3.5 flex items-center gap-1.5 border border-white/10"
+                  title="Open Projector View for Auditorium Screen"
+                >
+                  <Tv className="h-4 w-4 text-cyan-400" />
+                  Projector View
+                </Button>
+              </div>
+            </div>
+          </Card>
+
           <Card className="border-white/5 bg-black/40 backdrop-blur-xl rounded-2xl">
             <CardHeader className="flex flex-col sm:flex-row justify-between sm:items-center gap-4">
               <div>
@@ -925,7 +1182,317 @@ export default function AdminEventDashboard({
             </Card>
           </div>
         </TabsContent>
+
+        {/* Tab 5: Missed Attendance (PCDP App) */}
+        <TabsContent value="missed-attendance" className="mt-6 space-y-6">
+          <Card className="border-white/5 bg-black/40 backdrop-blur-xl rounded-2xl">
+            <CardHeader className="flex flex-col sm:flex-row justify-between sm:items-center gap-4">
+              <div>
+                <CardTitle className="text-lg font-bold text-white flex items-center gap-2">
+                  <Clock className="h-5 w-5 text-cyan-400" />
+                  Missed Attendance Tracking ({missedAttendance.length} records)
+                </CardTitle>
+                <CardDescription className="text-xs text-neutral-400 mt-1">
+                  Students who missed institute attendance in PCDP during this event. Exported with 1 distinct row per missed hour.
+                </CardDescription>
+              </div>
+
+              <div className="flex items-center gap-2.5 flex-wrap">
+                <Button
+                  onClick={handleExportMissedAttendance}
+                  disabled={missedAttendance.length === 0}
+                  size="sm"
+                  className="bg-emerald-500 hover:bg-emerald-600 text-black font-bold text-xs rounded-xl h-10 px-4 flex items-center gap-1.5 shadow-lg shadow-emerald-500/10"
+                >
+                  <FileSpreadsheet className="h-4 w-4" />
+                  Export Missed Attendance (XLSX)
+                </Button>
+                <Button
+                  onClick={() => setAddMissedModalOpen(true)}
+                  size="sm"
+                  variant="outline"
+                  className="border-white/10 hover:bg-white/5 text-white text-xs font-bold rounded-xl h-10 px-4 flex items-center gap-1.5"
+                >
+                  <Plus className="h-4 w-4 text-cyan-400" />
+                  Record Student
+                </Button>
+              </div>
+            </CardHeader>
+
+            <CardContent className="p-0">
+              {missedAttendance.length === 0 ? (
+                <div className="py-12 text-center text-sm text-neutral-500 border-t border-white/5">
+                  No missed attendance records logged for this event.
+                </div>
+              ) : (
+                <div className="overflow-x-auto">
+                  <table className="w-full text-left border-collapse border-t border-white/5">
+                    <thead>
+                      <tr className="border-b border-white/5 text-xs font-bold uppercase tracking-wider text-neutral-400 bg-white/[0.01]">
+                        <th className="py-4 px-6 w-12 text-center">S.No</th>
+                        <th className="py-4 px-6">Student</th>
+                        <th className="py-4 px-6">Roll Number</th>
+                        <th className="py-4 px-6">Missed Hours</th>
+                        <th className="py-4 px-6">Remarks</th>
+                        <th className="py-4 px-6 text-right">Actions</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-white/5 text-sm">
+                      {missedAttendance.map((item, idx) => (
+                        <tr key={item.id || idx} className="hover:bg-white/[0.01] transition-colors">
+                          <td className="py-4 px-6 text-center text-neutral-500 text-xs font-mono">
+                            {idx + 1}
+                          </td>
+                          <td className="py-4 px-6">
+                            <span className="font-bold text-white block text-xs">{item.name}</span>
+                            <span className="text-[10px] text-neutral-500 block">{item.email}</span>
+                          </td>
+                          <td className="py-4 px-6">
+                            <Badge className="bg-white/5 text-neutral-300 font-mono text-[10px] border-white/10 uppercase">
+                              {item.roll_number || 'N/A'}
+                            </Badge>
+                          </td>
+                          <td className="py-4 px-6">
+                            <div className="flex flex-wrap gap-1">
+                              {(Array.isArray(item.hours) ? item.hours : [item.hours]).map((h: any) => (
+                                <Badge key={h} className="bg-cyan-500/10 text-cyan-400 border-cyan-500/20 text-[10px] font-bold py-0 px-1.5">
+                                  H{typeof h === 'string' ? h.replace(/[^0-9]/g, '') || h : h}
+                                </Badge>
+                              ))}
+                            </div>
+                          </td>
+                          <td className="py-4 px-6 text-xs text-neutral-400">
+                            {item.notes || '—'}
+                          </td>
+                          <td className="py-4 px-6 text-right">
+                            <Button
+                              onClick={() => handleDeleteMissedAttendance(item.id)}
+                              disabled={isPending}
+                              variant="ghost"
+                              size="icon"
+                              className="h-8 w-8 text-neutral-500 hover:text-red-400 hover:bg-red-500/10 rounded-lg"
+                              title="Delete record"
+                            >
+                              <Trash2 className="h-3.5 w-3.5" />
+                            </Button>
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+            </CardContent>
+          </Card>
+        </TabsContent>
+
+        {/* Tab 6: Attendee Feedback */}
+        <TabsContent value="feedback" className="mt-6 space-y-6">
+          <Card className="border-white/5 bg-black/40 backdrop-blur-xl rounded-2xl">
+            <CardHeader className="flex flex-col sm:flex-row justify-between sm:items-center gap-4">
+              <div>
+                <CardTitle className="text-lg font-bold text-white flex items-center gap-2">
+                  <Star className="h-5 w-5 text-amber-400 fill-amber-400" />
+                  Attendee Feedback ({feedbacks.length} Reviews)
+                </CardTitle>
+                <CardDescription className="text-xs text-neutral-400 mt-1">
+                  Post-event feedback submitted by participants through the OTP attendance flow.
+                </CardDescription>
+              </div>
+              {feedbacks.length > 0 && (
+                <div className="flex items-center gap-2 bg-amber-500/10 border border-amber-500/20 rounded-xl px-3 py-1.5">
+                  <Star className="h-4 w-4 text-amber-400 fill-amber-400" />
+                  <span className="text-xs font-extrabold text-amber-400">
+                    {(feedbacks.reduce((acc, f) => acc + (f.rating || 5), 0) / feedbacks.length).toFixed(1)} / 5.0 Average
+                  </span>
+                </div>
+              )}
+            </CardHeader>
+
+            <CardContent className="p-0">
+              {feedbacks.length === 0 ? (
+                <div className="py-12 text-center text-sm text-neutral-500 border-t border-white/5">
+                  No feedback reviews submitted yet.
+                </div>
+              ) : (
+                <div className="divide-y divide-white/5 border-t border-white/5">
+                  {feedbacks.map((fb, idx) => (
+                    <div key={fb.id || idx} className="p-5 flex flex-col sm:flex-row justify-between gap-4 hover:bg-white/[0.01] transition-colors">
+                      <div className="space-y-1.5">
+                        <div className="flex items-center gap-2 flex-wrap">
+                          <span className="font-bold text-white text-xs">{fb.user_name}</span>
+                          {fb.user_roll && (
+                            <Badge className="bg-white/5 text-neutral-400 text-[10px] font-mono border-white/10">
+                              {fb.user_roll}
+                            </Badge>
+                          )}
+                          <span className="text-[10px] text-neutral-500">
+                            {new Date(fb.created_at).toLocaleDateString()}
+                          </span>
+                        </div>
+                        {fb.feedback ? (
+                          <p className="text-xs text-neutral-300 whitespace-pre-wrap leading-relaxed">
+                            "{fb.feedback}"
+                          </p>
+                        ) : (
+                          <p className="text-xs text-neutral-600 italic">No written comment provided.</p>
+                        )}
+                      </div>
+
+                      <div className="flex items-center gap-1 shrink-0 self-start sm:self-center">
+                        {[1, 2, 3, 4, 5].map((s) => (
+                          <Star
+                            key={s}
+                            className={cn(
+                              "h-3.5 w-3.5",
+                              s <= (fb.rating || 5) ? "fill-amber-400 text-amber-400" : "fill-transparent text-neutral-700"
+                            )}
+                          />
+                        ))}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </CardContent>
+          </Card>
+        </TabsContent>
       </Tabs>
+
+      {/* Projector View Dialog for Big Screen */}
+      <Dialog open={projectorOpen} onOpenChange={setProjectorOpen}>
+        <DialogContent className="border-cyan-500/30 bg-black text-white sm:max-w-2xl rounded-3xl p-8 text-center space-y-6">
+          <div className="space-y-2">
+            <Badge className="bg-cyan-500/10 text-cyan-400 border-cyan-500/30 text-xs font-bold uppercase tracking-wider px-3 py-1">
+              Live Attendance Check-In
+            </Badge>
+            <h2 className="text-2xl sm:text-3xl font-black tracking-tight text-white">{event.title}</h2>
+            <p className="text-xs sm:text-sm text-neutral-400 max-w-md mx-auto">
+              Scan or go to PhotoHub &gt; Events &gt; this event and enter the OTP below to mark your attendance and claim institute hours.
+            </p>
+          </div>
+
+          <div className="py-8 px-6 bg-gradient-to-b from-white/[0.04] to-transparent border border-cyan-500/20 rounded-3xl space-y-2">
+            <span className="text-xs font-bold text-neutral-500 uppercase tracking-[0.2em]">Attendance Code</span>
+            <div className="text-6xl sm:text-7xl font-black font-mono tracking-[0.3em] text-cyan-400 drop-shadow-[0_0_25px_rgba(34,211,238,0.4)]">
+              {otpCode || '------'}
+            </div>
+          </div>
+
+          <div className="flex items-center justify-center gap-6 text-xs text-neutral-400">
+            <span className="flex items-center gap-1.5">
+              <CheckCircle2 className="h-4 w-4 text-emerald-400" />
+              Instant Points Awarded
+            </span>
+            <span className="flex items-center gap-1.5">
+              <Clock className="h-4 w-4 text-cyan-400" />
+              PCDP Hours Normalization
+            </span>
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* Manual Add Missed Attendance Dialog */}
+      <Dialog open={addMissedModalOpen} onOpenChange={setAddMissedModalOpen}>
+        <DialogContent className="border-white/10 bg-neutral-950 text-white sm:max-w-md rounded-2xl">
+          <DialogHeader>
+            <DialogTitle className="text-lg font-bold flex items-center gap-2">
+              <Plus className="h-5 w-5 text-cyan-400" />
+              Record Missed Attendance
+            </DialogTitle>
+            <DialogDescription className="text-xs text-neutral-400">
+              Record a student who missed college PCDP attendance during this event.
+            </DialogDescription>
+          </DialogHeader>
+
+          <form onSubmit={handleAddMissedAttendance} className="space-y-4 pt-2">
+            <div className="space-y-1.5">
+              <Label className="text-xs font-bold text-neutral-300">Student Name *</Label>
+              <Input
+                value={missedName}
+                onChange={(e) => setMissedName(e.target.value)}
+                placeholder="Full Name"
+                className="bg-black/40 border-white/10 text-xs h-10 rounded-xl"
+              />
+            </div>
+
+            <div className="space-y-1.5">
+              <Label className="text-xs font-bold text-neutral-300">Roll Number *</Label>
+              <Input
+                value={missedRollNumber}
+                onChange={(e) => setMissedRollNumber(e.target.value.toUpperCase())}
+                placeholder="e.g. 7376221EC101"
+                className="bg-black/40 border-white/10 text-xs font-mono uppercase h-10 rounded-xl"
+              />
+            </div>
+
+            <div className="space-y-1.5">
+              <Label className="text-xs font-bold text-neutral-300">Email Address (Optional)</Label>
+              <Input
+                value={missedEmail}
+                onChange={(e) => setMissedEmail(e.target.value)}
+                placeholder="student@bitsathy.ac.in"
+                className="bg-black/40 border-white/10 text-xs h-10 rounded-xl"
+              />
+            </div>
+
+            <div className="space-y-2">
+              <div className="flex items-center justify-between">
+                <Label className="text-xs font-bold text-neutral-300">Missed Hours (1 - 7) *</Label>
+                <span className="text-[10px] text-cyan-400 font-bold">{missedSelectedHours.length} selected</span>
+              </div>
+              <div className="grid grid-cols-7 gap-1">
+                {[1, 2, 3, 4, 5, 6, 7].map((hour) => {
+                  const isSelected = missedSelectedHours.includes(hour)
+                  return (
+                    <button
+                      key={hour}
+                      type="button"
+                      onClick={() => toggleMissedHour(hour)}
+                      className={cn(
+                        'py-2 rounded-lg text-xs font-bold border transition-all text-center',
+                        isSelected
+                          ? 'bg-cyan-500 text-black border-cyan-400'
+                          : 'bg-black/30 border-white/10 text-neutral-400 hover:text-white'
+                      )}
+                    >
+                      H{hour}
+                    </button>
+                  )
+                })}
+              </div>
+            </div>
+
+            <div className="space-y-1.5">
+              <Label className="text-xs font-bold text-neutral-300">Remarks / Reason (Optional)</Label>
+              <Input
+                value={missedNotes}
+                onChange={(e) => setMissedNotes(e.target.value)}
+                placeholder="e.g. EC302 Lecture missed"
+                className="bg-black/40 border-white/10 text-xs h-10 rounded-xl"
+              />
+            </div>
+
+            <div className="flex gap-2 pt-2">
+              <Button
+                type="button"
+                variant="ghost"
+                onClick={() => setAddMissedModalOpen(false)}
+                className="flex-1 border border-white/10 hover:bg-white/5 rounded-xl h-10 text-xs font-semibold"
+              >
+                Cancel
+              </Button>
+              <Button
+                type="submit"
+                disabled={isPending}
+                className="flex-1 bg-gradient-to-r from-cyan-500 to-teal-500 hover:opacity-90 text-black font-bold rounded-xl h-10 text-xs"
+              >
+                {isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : 'Save Record'}
+              </Button>
+            </div>
+          </form>
+        </DialogContent>
+      </Dialog>
     </div>
   )
 }

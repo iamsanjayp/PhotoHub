@@ -92,16 +92,18 @@ export function BatchCleanupDialog() {
 
   return (
     <Dialog open={open} onOpenChange={handleOpenChange}>
-      <DialogTrigger asChild>
-        <Button
-          variant="outline"
-          size="sm"
-          className="h-9 border-amber-500/30 bg-amber-500/10 text-amber-300 hover:bg-amber-500/20 hover:text-white rounded-xl gap-2 font-medium"
-        >
-          <DatabaseZap className="h-4 w-4 text-amber-400" />
-          <span>Batch Storage Cleanup</span>
-        </Button>
-      </DialogTrigger>
+      <DialogTrigger
+        render={
+          <Button
+            variant="outline"
+            size="sm"
+            className="h-9 border-amber-500/30 bg-amber-500/10 text-amber-300 hover:bg-amber-500/20 hover:text-white rounded-xl gap-2 font-medium"
+          >
+            <DatabaseZap className="h-4 w-4 text-amber-400" />
+            <span>Batch Storage Cleanup</span>
+          </Button>
+        }
+      />
 
       <DialogContent className="max-w-2xl bg-neutral-950 border-white/10 text-white p-6 rounded-2xl max-h-[90vh] overflow-y-auto">
         <DialogHeader>

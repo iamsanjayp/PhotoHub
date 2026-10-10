@@ -12,6 +12,7 @@ import { getCurrentProfile } from './auth'
 import { revalidatePath } from 'next/cache'
 import { isAdminOrBoard, canAccessCamera } from '@/lib/constants/roles'
 import { POINT_VALUES } from '@/lib/constants/points'
+import { getMissedAttendanceRecords } from './missed-attendance'
 
 // 1. PUBLIC: Create APEX request (uses admin client to bypass RLS since user is unauthenticated)
 export async function createApexRequest(input: CreateApexRequestInput) {
@@ -130,9 +131,25 @@ export async function getApexRequestById(requestId: string) {
 
     if (mediaError) throw mediaError
 
+    // Fetch profile of the person who reviewed/assigned/scheduled the shoot
+    let reviewedByProfile = null
+    if (request.reviewed_by) {
+      const { data: revProf } = await adminClient
+        .from('profiles')
+        .select('id, full_name, email, role, phone, avatar_url, roll_number, department')
+        .eq('id', request.reviewed_by)
+        .maybeSingle()
+      reviewedByProfile = revProf || null
+    }
+
+    // Fetch missed attendance records for this shoot
+    const { data: missedAttendance } = await getMissedAttendanceRecords('shoot', requestId)
+
     return {
       data: {
         ...request,
+        reviewed_by_profile: reviewedByProfile,
+        missed_attendance: missedAttendance || [],
         assignments: assignments || [],
         equipment_assignments: eqAssignments || [],
         media: media || [],
@@ -1252,4 +1269,144 @@ export async function removeEquipmentFromApex(equipmentAssignmentId: string, equ
     return { error: error.message || 'Failed to remove equipment' }
   }
 }
+
+// 17. ADMIN/LEADERSHIP: Update Shoot Details (Organizer, Contact, Schedule, Notes)
+export interface UpdateApexDetailsInput {
+  event_name?: string
+  organizer_name?: string
+  department?: string
+  contact_email?: string
+  contact_phone?: string
+  venue?: string
+  event_date?: string
+  event_time?: string
+  end_time?: string
+  coverage_type?: 'photography' | 'videography' | 'both'
+  notes?: string
+}
+
+export async function updateApexDetails(requestId: string, input: UpdateApexDetailsInput) {
+  try {
+    const profile = await getCurrentProfile()
+    if (!profile || (!isAdminOrBoard(profile.role) && !canAccessCamera(profile.role))) {
+      throw new Error('Unauthorized. Admin or Camera Holder leadership access required.')
+    }
+
+    const adminClient = await createAdminClient()
+
+    const updatePayload: Record<string, any> = {
+      updated_at: new Date().toISOString(),
+    }
+
+    if (input.event_name !== undefined) updatePayload.event_name = input.event_name.trim()
+    if (input.organizer_name !== undefined) updatePayload.organizer_name = input.organizer_name.trim()
+    if (input.department !== undefined) updatePayload.department = input.department.trim() || null
+    if (input.contact_email !== undefined) updatePayload.contact_email = input.contact_email.trim()
+    if (input.contact_phone !== undefined) updatePayload.contact_phone = input.contact_phone.trim() || null
+    if (input.venue !== undefined) updatePayload.venue = input.venue.trim() || null
+    if (input.event_date !== undefined) updatePayload.event_date = input.event_date
+    if (input.event_time !== undefined) updatePayload.event_time = input.event_time || null
+    if (input.end_time !== undefined) updatePayload.end_time = input.end_time || null
+    if (input.coverage_type !== undefined) updatePayload.coverage_type = input.coverage_type
+    if (input.notes !== undefined) updatePayload.notes = input.notes.trim() || null
+
+    const { data, error } = await adminClient
+      .from('apex_requests')
+      .update(updatePayload)
+      .eq('id', requestId)
+      .select()
+      .single()
+
+    if (error) throw error
+
+    revalidatePath(`/admin/apex/${requestId}`)
+    revalidatePath('/admin/apex')
+    revalidatePath('/my-assignments')
+    return { success: true, data }
+  } catch (error: any) {
+    console.error('Error in updateApexDetails:', error)
+    return { error: error.message || 'Failed to update shoot details' }
+  }
+}
+
+// 18. ADMIN/BOARD: Delete Shoot entirely from database
+export async function deleteApexRequest(requestId: string) {
+  try {
+    const profile = await getCurrentProfile()
+    if (!profile || !isAdminOrBoard(profile.role)) {
+      throw new Error('Unauthorized. Only Admins and Board Members can permanently delete shoots.')
+    }
+
+    const adminClient = await createAdminClient()
+
+    // 1. Return/Release all allocated equipment
+    const { data: eqAssignments } = await adminClient
+      .from('equipment_assignments')
+      .select('equipment_id')
+      .eq('apex_request_id', requestId)
+
+    if (eqAssignments && eqAssignments.length > 0) {
+      const eqIds = eqAssignments.map((ea: any) => ea.equipment_id).filter(Boolean)
+      if (eqIds.length > 0) {
+        await adminClient
+          .from('equipment')
+          .update({ status: 'available' })
+          .in('id', eqIds)
+      }
+      await adminClient
+        .from('equipment_assignments')
+        .delete()
+        .eq('apex_request_id', requestId)
+    }
+
+    // 2. Remove any points logs generated for this shoot
+    await adminClient
+      .from('points_log')
+      .delete()
+      .eq('source_type', 'apex_completed')
+      .eq('source_id', requestId)
+
+    // 3. Delete media items
+    await adminClient
+      .from('apex_media')
+      .delete()
+      .eq('request_id', requestId)
+
+    // 4. Delete missed attendance records if any
+    try {
+      await adminClient
+        .from('missed_attendance')
+        .delete()
+        .eq('source_type', 'shoot')
+        .eq('source_id', requestId)
+    } catch {
+      // Ignore if table not present
+    }
+
+    // 5. Delete apex_assignments (which cascade-deletes apex_attendance)
+    await adminClient
+      .from('apex_assignments')
+      .delete()
+      .eq('request_id', requestId)
+
+    // 6. Delete the shoot from apex_requests
+    const { error: delErr } = await adminClient
+      .from('apex_requests')
+      .delete()
+      .eq('id', requestId)
+
+    if (delErr) throw delErr
+
+    revalidatePath('/admin/apex')
+    revalidatePath('/shoots')
+    revalidatePath('/dashboard')
+    revalidatePath('/my-assignments')
+
+    return { success: true }
+  } catch (error: any) {
+    console.error('Error in deleteApexRequest:', error)
+    return { error: error.message || 'Failed to delete shoot from database' }
+  }
+}
+
 

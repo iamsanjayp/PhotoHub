@@ -78,7 +78,10 @@ export function ScheduleShootDialog({
 
   // Form states
   const [eventName, setEventName] = useState('')
+  const [organizerName, setOrganizerName] = useState('')
   const [department, setDepartment] = useState('')
+  const [contactEmail, setContactEmail] = useState(() => currentUser?.email || '')
+  const [contactPhone, setContactPhone] = useState(() => currentUser?.phone || '')
   const [apexRef, setApexRef] = useState('')
   const [venue, setVenue] = useState('')
   const [eventDate, setEventDate] = useState(() => new Date().toISOString().split('T')[0])
@@ -86,6 +89,7 @@ export function ScheduleShootDialog({
   const [endTime, setEndTime] = useState('')
   const [coverageType, setCoverageType] = useState<'photography' | 'videography' | 'both'>('both')
   const [notes, setNotes] = useState('')
+
 
   interface AllocatedGearRow {
     id: string
@@ -199,7 +203,10 @@ export function ScheduleShootDialog({
 
   const resetForm = () => {
     setEventName('')
+    setOrganizerName('')
     setDepartment('')
+    setContactEmail(currentUser?.email || '')
+    setContactPhone(currentUser?.phone || '')
     setApexRef('')
     setVenue('')
     setEventDate(new Date().toISOString().split('T')[0])
@@ -208,6 +215,7 @@ export function ScheduleShootDialog({
     setCoverageType('both')
     setNotes('')
     setAllocatedGear([])
+
     if (currentUser) {
       setCrew([
         {
@@ -311,10 +319,10 @@ export function ScheduleShootDialog({
 
       const res = await createInternalApex({
         event_name: eventName.trim(),
-        organizer_name: department.trim() || 'Club Internal',
+        organizer_name: organizerName.trim() || department.trim() || currentUser?.full_name || 'Club Internal',
         department: department.trim() || 'Photography Club',
-        contact_email: currentUser?.email || 'admin@photohub.club',
-        contact_phone: currentUser?.phone || undefined,
+        contact_email: contactEmail.trim() || currentUser?.email || 'admin@photohub.club',
+        contact_phone: contactPhone.trim() || currentUser?.phone || undefined,
         venue: venue.trim() || undefined,
         event_date: eventDate,
         event_time: eventTime || undefined,
@@ -322,6 +330,7 @@ export function ScheduleShootDialog({
         coverage_type: coverageType,
         notes: combinedNotes || undefined,
         initial_status: 'assigned',
+
         allocated_gear: allocatedGear.map((g) => ({
           equipment_id: g.equipment_id,
           custodian_id: g.custodian_id || undefined,
@@ -405,17 +414,58 @@ export function ScheduleShootDialog({
               </div>
 
               <div className="space-y-1.5">
+                <Label htmlFor="shoot-organizer-name" className="text-neutral-300 font-semibold text-xs">
+                  Organizer / Point of Contact Name
+                </Label>
+                <Input
+                  id="shoot-organizer-name"
+                  placeholder="e.g. Dr. Rajesh Kumar / Faheem"
+                  value={organizerName}
+                  onChange={(e) => setOrganizerName(e.target.value)}
+                  className="border-white/10 bg-white/[0.03] text-white rounded-xl placeholder-neutral-600 focus:border-cyan-500/40 text-sm h-10"
+                />
+              </div>
+
+              <div className="space-y-1.5">
                 <Label htmlFor="shoot-department" className="text-neutral-300 font-semibold text-xs">
                   Host / Department
                 </Label>
                 <Input
                   id="shoot-department"
-                  placeholder="e.g. CSE Dept, Student Council, Fine Arts"
+                  placeholder="e.g. CSE Dept, Student Council, Fine Arts, IECC"
                   value={department}
                   onChange={(e) => setDepartment(e.target.value)}
                   className="border-white/10 bg-white/[0.03] text-white rounded-xl placeholder-neutral-600 focus:border-cyan-500/40 text-sm h-10"
                 />
               </div>
+
+              <div className="space-y-1.5">
+                <Label htmlFor="shoot-contact-email" className="text-neutral-300 font-semibold text-xs">
+                  Organizer / Contact Email
+                </Label>
+                <Input
+                  id="shoot-contact-email"
+                  type="email"
+                  placeholder="e.g. organizer@bitsathy.ac.in"
+                  value={contactEmail}
+                  onChange={(e) => setContactEmail(e.target.value)}
+                  className="border-white/10 bg-white/[0.03] text-white rounded-xl placeholder-neutral-600 focus:border-cyan-500/40 text-sm h-10"
+                />
+              </div>
+
+              <div className="space-y-1.5">
+                <Label htmlFor="shoot-contact-phone" className="text-neutral-300 font-semibold text-xs">
+                  Organizer Contact Phone
+                </Label>
+                <Input
+                  id="shoot-contact-phone"
+                  placeholder="e.g. 9876543210"
+                  value={contactPhone}
+                  onChange={(e) => setContactPhone(e.target.value)}
+                  className="border-white/10 bg-white/[0.03] text-white rounded-xl placeholder-neutral-600 focus:border-cyan-500/40 text-sm h-10"
+                />
+              </div>
+
 
               <div className="space-y-1.5">
                 <Label htmlFor="shoot-apex-ref" className="text-neutral-300 font-semibold text-xs flex items-center gap-1">

@@ -7,6 +7,8 @@ import { createEventSchema, type CreateEventInput, type UpdateEventInput } from 
 import { revalidatePath } from 'next/cache'
 
 import { isAdminOrBoard, isClubCoreMember } from '@/lib/constants/roles'
+import { addMissedAttendanceRecord, getMissedAttendanceRecords } from './missed-attendance'
+
 
 // Helper for role checks
 async function assertAdminOrLeader() {
@@ -685,4 +687,435 @@ export async function getEventExportData(eventId: string) {
     return { error: error.message || 'Failed to fetch event export data' }
   }
 }
+
+// ============================================================
+// 14. OTP ATTENDANCE & ATTENDEE FEEDBACK SYSTEM
+// ============================================================
+
+const EVENT_OTP_TAG = '<!-- EVENT_OTP_CONFIG:'
+const EVENT_OTP_END = '-->'
+const EVENT_FEEDBACK_TAG = '<!-- EVENT_FEEDBACK_LIST:'
+const EVENT_FEEDBACK_END = '-->'
+
+export interface OtpMetaConfig {
+  otp: string
+  active: boolean
+  updated_at?: string
+}
+
+export interface EventFeedbackItem {
+  id: string
+  user_id: string
+  user_name: string
+  user_email: string
+  user_roll?: string
+  rating: number
+  feedback: string
+  created_at: string
+}
+
+function parseOtpConfig(text: string | null | undefined): OtpMetaConfig | null {
+  if (!text || !text.includes(EVENT_OTP_TAG)) return null
+  try {
+    const start = text.indexOf(EVENT_OTP_TAG) + EVENT_OTP_TAG.length
+    const end = text.indexOf(EVENT_OTP_END, start)
+    if (end === -1) return null
+    return JSON.parse(text.substring(start, end).trim())
+  } catch {
+    return null
+  }
+}
+
+function updateOtpConfigInText(text: string | null | undefined, config: OtpMetaConfig): string {
+  const base = (text || '').replace(new RegExp(`${EVENT_OTP_TAG}[\\s\\S]*?${EVENT_OTP_END}`, 'g'), '').trim()
+  const block = `\n\n${EVENT_OTP_TAG} ${JSON.stringify(config)} ${EVENT_OTP_END}`
+  return base ? `${base}${block}` : block.trim()
+}
+
+function parseEventFeedback(text: string | null | undefined): EventFeedbackItem[] {
+  if (!text || !text.includes(EVENT_FEEDBACK_TAG)) return []
+  try {
+    const start = text.indexOf(EVENT_FEEDBACK_TAG) + EVENT_FEEDBACK_TAG.length
+    const end = text.indexOf(EVENT_FEEDBACK_END, start)
+    if (end === -1) return []
+    const parsed = JSON.parse(text.substring(start, end).trim())
+    return Array.isArray(parsed) ? parsed : []
+  } catch {
+    return []
+  }
+}
+
+function updateEventFeedbackInText(text: string | null | undefined, list: EventFeedbackItem[]): string {
+  const base = (text || '').replace(new RegExp(`${EVENT_FEEDBACK_TAG}[\\s\\S]*?${EVENT_FEEDBACK_END}`, 'g'), '').trim()
+  const block = `\n\n${EVENT_FEEDBACK_TAG} ${JSON.stringify(list)} ${EVENT_FEEDBACK_END}`
+  return base ? `${base}${block}` : block.trim()
+}
+
+// 14a. ADMIN: Set Event OTP and Active Status
+export async function setEventAttendanceOtp(eventId: string, otp: string, active: boolean) {
+  try {
+    await assertAdminOrLeader()
+    const supabase = await createAdminClient()
+
+    const cleanOtp = otp.trim().toUpperCase()
+    const config: OtpMetaConfig = {
+      otp: cleanOtp,
+      active,
+      updated_at: new Date().toISOString(),
+    }
+
+    // 1. Try updating native columns if present
+    let updatedNative = false
+    try {
+      const { error } = await supabase
+        .from('events')
+        .update({
+          attendance_otp: cleanOtp,
+          attendance_otp_active: active,
+          updated_at: new Date().toISOString(),
+        } as any)
+        .eq('id', eventId)
+
+      if (!error) updatedNative = true
+    } catch {
+      updatedNative = false
+    }
+
+    // 2. Fallback update via description metadata
+    if (!updatedNative) {
+      const { data: ev } = await supabase
+        .from('events')
+        .select('description')
+        .eq('id', eventId)
+        .single()
+
+      await supabase
+        .from('events')
+        .update({
+          description: updateOtpConfigInText(ev?.description, config),
+          updated_at: new Date().toISOString(),
+        })
+        .eq('id', eventId)
+    }
+
+    revalidatePath(`/admin/events/${eventId}`)
+    revalidatePath(`/events/${eventId}`)
+
+    return { success: true, config }
+  } catch (error: any) {
+    console.error('Error in setEventAttendanceOtp:', error)
+    return { error: error.message || 'Failed to set event OTP' }
+  }
+}
+
+// 14b. GET Event OTP Configuration
+export async function getEventOtpConfig(eventId: string) {
+  try {
+    const profile = await getCurrentProfile()
+    const supabase = await createAdminClient()
+
+    const { data: event, error } = await supabase
+      .from('events')
+      .select('*')
+      .eq('id', eventId)
+      .single()
+
+    if (error || !event) throw new Error('Event not found')
+
+    // Determine OTP config from columns or fallback metadata
+    let config: OtpMetaConfig = {
+      otp: (event as any).attendance_otp || '',
+      active: !!(event as any).attendance_otp_active,
+    }
+
+    if (!config.otp) {
+      const meta = parseOtpConfig(event.description)
+      if (meta) {
+        config = meta
+      }
+    }
+
+    // Check attendance status for the current user if logged in
+    let isCheckedIn = false
+    let hasSubmittedFeedback = false
+    if (profile) {
+      const { data: reg } = await supabase
+        .from('event_registrations')
+        .select('attended')
+        .eq('event_id', eventId)
+        .eq('user_id', profile.id)
+        .maybeSingle()
+
+      isCheckedIn = !!reg?.attended
+
+      // Check feedback
+      try {
+        const { data: fb } = await supabase
+          .from('event_feedback')
+          .select('id')
+          .eq('event_id', eventId)
+          .eq('user_id', profile.id)
+          .maybeSingle()
+        if (fb) hasSubmittedFeedback = true
+      } catch {
+        // Fallback
+        const feedbacks = parseEventFeedback(event.description)
+        hasSubmittedFeedback = feedbacks.some((f) => f.user_id === profile.id)
+      }
+    }
+
+    // Role-based disclosure: Only leadership sees the actual OTP string
+    const isLeadership = profile ? isAdminOrBoard(profile.role) : false
+
+    return {
+      data: {
+        active: config.active,
+        otp: isLeadership ? config.otp : undefined,
+        isCheckedIn,
+        hasSubmittedFeedback,
+      },
+    }
+  } catch (error: any) {
+    console.error('Error in getEventOtpConfig:', error)
+    return { error: error.message || 'Failed to fetch OTP config' }
+  }
+}
+
+// 14c. MEMBER: Verify OTP and Claim Attendance
+export async function verifyAndCheckInWithOtp(eventId: string, enteredOtp: string) {
+  try {
+    const profile = await getCurrentProfile()
+    if (!profile) {
+      throw new Error('Please sign in to verify attendance.')
+    }
+
+    const supabase = await createAdminClient()
+
+    // 1. Fetch event and verify OTP
+    const { data: event, error: evErr } = await supabase
+      .from('events')
+      .select('*')
+      .eq('id', eventId)
+      .single()
+
+    if (evErr || !event) throw new Error('Event not found')
+
+    let activeOtp = (event as any).attendance_otp || ''
+    let isActive = !!(event as any).attendance_otp_active
+
+    if (!activeOtp) {
+      const meta = parseOtpConfig(event.description)
+      if (meta) {
+        activeOtp = meta.otp
+        isActive = meta.active
+      }
+    }
+
+    if (!isActive) {
+      throw new Error('OTP check-in is not currently open for this event.')
+    }
+
+    if (!activeOtp || enteredOtp.trim().toUpperCase() !== activeOtp.trim().toUpperCase()) {
+      throw new Error('Invalid OTP code. Please check with event organizers.')
+    }
+
+    // 2. Ensure registration exists (upsert)
+    const { data: reg, error: regErr } = await supabase
+      .from('event_registrations')
+      .select('id, attended')
+      .eq('event_id', eventId)
+      .eq('user_id', profile.id)
+      .maybeSingle()
+
+    if (!reg) {
+      // Auto-register attendee if they have the live OTP
+      await supabase
+        .from('event_registrations')
+        .insert({
+          event_id: eventId,
+          user_id: profile.id,
+          status: 'registered',
+          attended: true,
+          checked_in_at: new Date().toISOString(),
+          registered_at: new Date().toISOString(),
+        })
+    } else {
+      // Mark attended
+      await supabase
+        .from('event_registrations')
+        .update({
+          attended: true,
+          checked_in_at: new Date().toISOString(),
+        })
+        .eq('id', reg.id)
+    }
+
+    // 3. Refresh leaderboard points
+    await supabase.rpc('refresh_leaderboard')
+
+    revalidatePath(`/events/${eventId}`)
+    revalidatePath(`/admin/events/${eventId}`)
+
+    return {
+      success: true,
+      message: 'Attendance verified successfully! Please submit your event feedback below.',
+    }
+  } catch (error: any) {
+    console.error('Error in verifyAndCheckInWithOtp:', error)
+    return { error: error.message || 'OTP verification failed' }
+  }
+}
+
+// 14d. MEMBER: Submit Event Feedback and (optional) PCDP Missed Attendance
+export async function submitEventFeedbackAndMissedAttendance(
+  eventId: string,
+  input: {
+    rating: number
+    feedback: string
+    missedHours?: number[]
+    rollNumber?: string
+    notes?: string
+  }
+) {
+  try {
+    const profile = await getCurrentProfile()
+    if (!profile) throw new Error('Please sign in to submit feedback.')
+
+    const supabase = await createAdminClient()
+    const cleanRating = Math.max(1, Math.min(5, Number(input.rating) || 5))
+    const cleanFeedback = input.feedback?.trim() || ''
+
+    // 1. Record feedback in native table or metadata fallback
+    let savedNativeFb = false
+    try {
+      const { error: fbErr } = await supabase
+        .from('event_feedback')
+        .upsert(
+          {
+            event_id: eventId,
+            user_id: profile.id,
+            rating: cleanRating,
+            feedback: cleanFeedback,
+          },
+          { onConflict: 'event_id,user_id' }
+        )
+
+      if (!fbErr) savedNativeFb = true
+    } catch {
+      savedNativeFb = false
+    }
+
+    if (!savedNativeFb) {
+      const { data: ev } = await supabase
+        .from('events')
+        .select('description')
+        .eq('id', eventId)
+        .single()
+
+      const currentFeedbacks = parseEventFeedback(ev?.description)
+      const existingIdx = currentFeedbacks.findIndex((f) => f.user_id === profile.id)
+      const fbItem: EventFeedbackItem = {
+        id: crypto.randomUUID(),
+        user_id: profile.id,
+        user_name: profile.full_name || 'Member',
+        user_email: profile.email,
+        user_roll: input.rollNumber || profile.roll_number || '',
+        rating: cleanRating,
+        feedback: cleanFeedback,
+        created_at: new Date().toISOString(),
+      }
+
+      if (existingIdx >= 0) {
+        currentFeedbacks[existingIdx] = fbItem
+      } else {
+        currentFeedbacks.unshift(fbItem)
+      }
+
+      await supabase
+        .from('events')
+        .update({
+          description: updateEventFeedbackInText(ev?.description, currentFeedbacks),
+        })
+        .eq('id', eventId)
+    }
+
+    // 2. If student indicated missed hours in institute PCDP app, log to missed_attendance!
+    if (input.missedHours && input.missedHours.length > 0) {
+      await addMissedAttendanceRecord({
+        sourceType: 'event',
+        sourceId: eventId,
+        userId: profile.id,
+        name: profile.full_name || 'Student',
+        email: profile.email,
+        rollNumber: input.rollNumber || profile.roll_number || 'N/A',
+        hours: input.missedHours,
+        notes: input.notes ? `PCDP Missed: ${input.notes}` : 'Missed in PCDP app during event',
+      })
+    }
+
+    revalidatePath(`/events/${eventId}`)
+    revalidatePath(`/admin/events/${eventId}`)
+
+    return { success: true }
+  } catch (error: any) {
+    console.error('Error in submitEventFeedbackAndMissedAttendance:', error)
+    return { error: error.message || 'Failed to submit feedback' }
+  }
+}
+
+// 14e. ADMIN: Get Feedback & Missed Attendance for Event Dashboard
+export async function getEventFeedbackAndMissedAttendance(eventId: string) {
+  try {
+    await assertAdminOrLeader()
+    const supabase = await createAdminClient()
+
+    // 1. Fetch feedbacks
+    let feedbacks: EventFeedbackItem[] = []
+    try {
+      const { data: fbData, error: fbErr } = await supabase
+        .from('event_feedback')
+        .select('*, profiles(*)')
+        .eq('event_id', eventId)
+        .order('created_at', { ascending: false })
+
+      if (!fbErr && Array.isArray(fbData)) {
+        feedbacks = fbData.map((f: any) => ({
+          id: f.id,
+          user_id: f.user_id,
+          user_name: f.profiles?.full_name || 'Attendee',
+          user_email: f.profiles?.email || '',
+          user_roll: f.profiles?.roll_number || '',
+          rating: f.rating || 5,
+          feedback: f.feedback || '',
+          created_at: f.created_at,
+        }))
+      }
+    } catch {
+      // Fallback
+    }
+
+    if (feedbacks.length === 0) {
+      const { data: ev } = await supabase
+        .from('events')
+        .select('description')
+        .eq('id', eventId)
+        .maybeSingle()
+      feedbacks = parseEventFeedback(ev?.description)
+    }
+
+    // 2. Fetch missed attendance records for this event
+    const { data: missedAttendance } = await getMissedAttendanceRecords('event', eventId)
+
+    return {
+      data: {
+        feedbacks: feedbacks || [],
+        missedAttendance: missedAttendance || [],
+      },
+    }
+  } catch (error: any) {
+    console.error('Error in getEventFeedbackAndMissedAttendance:', error)
+    return { error: error.message || 'Failed to fetch feedback' }
+  }
+}
+
 

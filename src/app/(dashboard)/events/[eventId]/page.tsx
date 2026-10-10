@@ -1,8 +1,9 @@
 import type { Metadata } from 'next'
-import { getEventById } from '@/actions/events'
+import { getEventById, getEventOtpConfig } from '@/actions/events'
 import { getMySubmission } from '@/actions/submissions'
 import { getCurrentProfile } from '@/actions/auth'
 import RegistrationButton from '@/components/events/registration-button'
+import EventOtpCheckin from '@/components/events/event-otp-checkin'
 import SubmissionForm from '@/components/events/submission-form'
 import { ExportResultsButton } from '@/components/common/export-results-button'
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card'
@@ -30,9 +31,10 @@ export async function generateMetadata({ params }: PageProps): Promise<Metadata>
 
 export default async function EventDetailPage({ params }: PageProps) {
   const { eventId } = await params
-  const [result, profile] = await Promise.all([
+  const [result, profile, otpConfigRes] = await Promise.all([
     getEventById(eventId),
-    getCurrentProfile()
+    getCurrentProfile(),
+    getEventOtpConfig(eventId)
   ])
 
   if (result.error || !result.data) {
@@ -42,6 +44,7 @@ export default async function EventDetailPage({ params }: PageProps) {
   const event = result.data
   const isPast = new Date(event.end_date) < new Date()
   const isAdminOrLeader = profile && ['admin', 'leader'].includes(profile.role)
+  const otpConfig = otpConfigRes?.data || { active: false, isCheckedIn: false, hasSubmittedFeedback: false }
 
   // Fetch the user's submission if registered
   let existingSubmission = null
@@ -215,8 +218,18 @@ export default async function EventDetailPage({ params }: PageProps) {
         </div>
       </div>
 
-      {/* Right Side: Registration Widget */}
+      {/* Right Side: Registration & OTP Attendance Widget */}
         <div className="space-y-6">
+          <EventOtpCheckin
+            eventId={event.id}
+            eventTitle={event.title}
+            isRegistered={event.is_registered || false}
+            initialIsCheckedIn={otpConfig.isCheckedIn}
+            initialHasSubmittedFeedback={otpConfig.hasSubmittedFeedback}
+            isOtpActive={otpConfig.active}
+            userProfile={profile}
+          />
+
           <Card className="border-white/5 bg-black/40 backdrop-blur-xl rounded-2xl">
             <CardHeader className="pb-4">
               <CardTitle className="text-lg font-bold text-white">Event Details</CardTitle>

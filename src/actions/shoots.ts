@@ -543,3 +543,40 @@ export async function completePhShoot(shootId: string, pointsPerMember: number =
     return { error: error.message || 'Failed to complete shoot' }
   }
 }
+
+// 13. ADMIN/BOARD: Delete PH Shoot entirely from DB
+export async function deletePhShoot(shootId: string) {
+  try {
+    const profile = await assertAdminOrBoard()
+    const adminClient = await createAdminClient()
+
+    // Delete shoot assignments first
+    await adminClient
+      .from('shoot_assignments')
+      .delete()
+      .eq('shoot_id', shootId)
+
+    // Delete points log if needed
+    await adminClient
+      .from('points_log')
+      .delete()
+      .eq('source_type', 'shoot_completed')
+      .eq('source_id', shootId)
+
+    // Delete shoot
+    const { error } = await adminClient
+      .from('ph_shoots')
+      .delete()
+      .eq('id', shootId)
+
+    if (error) throw error
+
+    revalidatePath('/shoots')
+    revalidatePath('/dashboard')
+    return { success: true }
+  } catch (error: any) {
+    console.error('Error in deletePhShoot:', error)
+    return { error: error.message || 'Failed to delete shoot' }
+  }
+}
+
