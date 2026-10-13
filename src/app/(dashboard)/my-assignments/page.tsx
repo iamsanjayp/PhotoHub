@@ -5,7 +5,6 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import {
   getMyAssignments,
   respondToAssignment,
-  logApexAttendance,
   uploadApexMedia,
   deleteApexMedia,
   updateApexStatus,
@@ -36,9 +35,7 @@ import {
   ShieldAlert,
   Upload,
   Trash2,
-  CheckSquare,
   Loader2,
-  Play,
   Camera,
   Users,
   ShieldCheck,
@@ -124,14 +121,12 @@ export default function MyAssignmentsPage() {
   // Split into active/upcoming vs completed assignments
   const activeAssignments = assignments.filter((a: any) => {
     const isDone = ['completed', 'delivered'].includes(a.apex_requests?.status)
-    const isUserDone = a.apex_attendance?.some((att: any) => !!att.checked_out_at)
-    return !isDone && !isUserDone && a.status !== 'rejected'
+    return !isDone && a.status !== 'rejected'
   })
 
   const completedAssignments = assignments.filter((a: any) => {
     const isDone = ['completed', 'delivered'].includes(a.apex_requests?.status)
-    const isUserDone = a.apex_attendance?.some((att: any) => !!att.checked_out_at)
-    return isDone || isUserDone || a.status === 'rejected'
+    return isDone || a.status === 'rejected'
   })
 
   // Response mutation
@@ -147,30 +142,6 @@ export default function MyAssignmentsPage() {
     },
     onError: (err: any) => {
       toast.error(err.message || 'Failed to submit response')
-    },
-  })
-
-  // Attendance mutation
-  const attendanceMutation = useMutation({
-    mutationFn: async ({
-      assignmentId,
-      checkIn,
-      checkOut,
-    }: {
-      assignmentId: string
-      checkIn: string
-      checkOut?: string
-    }) => {
-      const res = await logApexAttendance(assignmentId, checkIn, checkOut)
-      if (res.error) throw new Error(res.error)
-      return res
-    },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['my-assignments'] })
-      toast.success('Attendance logged successfully')
-    },
-    onError: (err: any) => {
-      toast.error(err.message || 'Failed to log attendance')
     },
   })
 
@@ -245,7 +216,7 @@ export default function MyAssignmentsPage() {
             </Badge>
           </div>
           <p className="text-neutral-400 text-sm">
-            Manage your campus event coverage assignments, view shoot camera gear, log individual attendance, and upload deliverables.
+            Manage your campus event coverage assignments, view shoot camera gear, claim missed college attendance, and upload deliverables.
           </p>
         </div>
 
@@ -322,14 +293,7 @@ export default function MyAssignmentsPage() {
             const isAccepted = assignment.status === 'accepted'
             const isRejected = assignment.status === 'rejected'
 
-            // Individual Attendance: only for this user
-            const attendanceRecord =
-              (assignment.apex_attendance || []).find((att: any) => att.assignment_id === assignment.id) ||
-              assignment.apex_attendance?.[0]
-
             const isShootConcluded = req.status === 'completed' || req.status === 'delivered'
-            const hasCheckedIn = !!attendanceRecord?.checked_in_at
-            const hasCompleted = !!attendanceRecord?.checked_out_at
 
             // Shoot-level gear allocation: collect all allocated equipment items for this shoot
             const shootGearList = (() => {
@@ -587,84 +551,51 @@ export default function MyAssignmentsPage() {
                       )}
                     </div>
 
-                    {/* Right: Operational controls (Attendance / Deliverables) */}
+                    {/* Right: Operational controls (Coverage Status / Deliverables) */}
                     {isAccepted && (
                       <div className="space-y-4 border-t md:border-t-0 md:border-l border-white/5 pt-4 md:pt-0 md:pl-6">
-                        {/* Attendance Tracker */}
+                        {/* Shoot Schedule Proof & Status */}
                         <div className="space-y-3">
-                          <h4 className="text-xs font-bold text-cyan-400 uppercase tracking-wider flex items-center gap-1.5">
-                            <Clock className="h-3.5 w-3.5" />
-                            Your Attendance Log
-                          </h4>
+                          <div className="flex items-center justify-between">
+                            <h4 className="text-xs font-bold text-cyan-400 uppercase tracking-wider flex items-center gap-1.5">
+                              <Calendar className="h-3.5 w-3.5" />
+                              Scheduled Coverage Proof
+                            </h4>
+                            <Badge
+                              className={cn(
+                                "text-[9px] font-bold py-0.5 px-2 rounded-full uppercase tracking-wider",
+                                isShootConcluded
+                                  ? "bg-emerald-500/10 text-emerald-400 border border-emerald-500/20"
+                                  : "bg-cyan-500/10 text-cyan-300 border border-cyan-500/20"
+                              )}
+                            >
+                              {isShootConcluded ? 'Concluded' : 'Scheduled'}
+                            </Badge>
+                          </div>
+
+                          <div className="p-3 bg-white/[0.02] border border-white/5 rounded-xl space-y-1.5 text-xs text-neutral-300">
+                            <div className="flex items-center gap-1.5 font-semibold text-white">
+                              <Clock className="h-3.5 w-3.5 text-cyan-400" />
+                              <span>{req.event_date ? format(new Date(req.event_date), 'EEE, MMM d, yyyy') : 'Date scheduled'}</span>
+                            </div>
+                            <p className="text-[11px] text-neutral-400">
+                              {req.event_time ? `${req.event_time}${req.end_time ? ` to ${req.end_time}` : ''}` : 'Timing as per schedule'}
+                              {req.venue ? ` • ${req.venue}` : ''}
+                            </p>
+                            <p className="text-[10px] text-neutral-500 pt-1 border-t border-white/5">
+                              Attendance is validated via scheduled shoot timing. Points are awarded automatically upon shoot completion.
+                            </p>
+                          </div>
 
                           {isShootConcluded ? (
                             <div className="text-xs text-emerald-400 flex items-center gap-1.5 p-3 rounded-xl border border-emerald-500/20 bg-emerald-500/5">
                               <CheckCircle className="h-4 w-4 shrink-0" />
-                              <span>Shoot has concluded. Attendance recorded (+25 points awarded).</span>
+                              <span>Shoot concluded. Attendance confirmed (+25 pts awarded)!</span>
                             </div>
-                          ) : !hasCheckedIn ? (
-                            <div className="space-y-2">
-                              <Button
-                                size="sm"
-                                onClick={() =>
-                                  attendanceMutation.mutate({
-                                    assignmentId: assignment.id,
-                                    checkIn: new Date().toISOString(),
-                                  })
-                                }
-                                disabled={attendanceMutation.isPending}
-                                className="bg-cyan-500 text-black hover:bg-cyan-400 font-bold rounded-xl h-10 text-xs gap-2 px-4 shadow-md shadow-cyan-950/20"
-                              >
-                                {attendanceMutation.isPending ? (
-                                  <Loader2 className="h-4 w-4 animate-spin" />
-                                ) : (
-                                  <Play className="h-4 w-4" />
-                                )}
-                                Check In (Shoot Started)
-                              </Button>
-                              <p className="text-[10px] text-neutral-500">
-                                Click when you arrive at the venue to start covering the event.
-                              </p>
-                            </div>
-                          ) : !hasCompleted ? (
-                            <div className="space-y-2">
-                              <div className="flex items-center gap-2">
-                                <Badge className="bg-purple-500/15 text-purple-300 border border-purple-500/30 text-[9px] uppercase tracking-wider px-2 py-0.5 rounded-full">
-                                  Checked In
-                                </Badge>
-                                <span className="text-[10px] text-neutral-400">
-                                  Since {format(new Date(attendanceRecord.checked_in_at), 'hh:mm a')}
-                                </span>
-                              </div>
-                              <Button
-                                size="sm"
-                                onClick={() =>
-                                  attendanceMutation.mutate({
-                                    assignmentId: assignment.id,
-                                    checkIn: attendanceRecord.checked_in_at,
-                                    checkOut: new Date().toISOString(),
-                                  })
-                                }
-                                disabled={attendanceMutation.isPending}
-                                className="bg-yellow-500 text-black hover:bg-yellow-400 font-bold rounded-xl h-10 text-xs gap-2 px-4"
-                              >
-                                {attendanceMutation.isPending ? (
-                                  <Loader2 className="h-4 w-4 animate-spin" />
-                                ) : (
-                                  <CheckSquare className="h-4 w-4" />
-                                )}
-                                Check Out (Shoot Finished)
-                              </Button>
-                            </div>
-                          ) : (
-                            <div className="text-xs text-neutral-400 flex items-center gap-1.5 p-3 rounded-xl border border-green-500/20 bg-green-500/5 text-green-400">
-                              <CheckCircle className="h-4 w-4 shrink-0" />
-                              <span>Your attendance is logged. Points awarded (+25 pts)!</span>
-                            </div>
-                          )}
+                          ) : null}
 
                           {/* Missed PCDP college attendance claim button */}
-                          <div className="pt-2 border-t border-white/5">
+                          <div className="pt-1">
                             <Button
                               type="button"
                               size="sm"

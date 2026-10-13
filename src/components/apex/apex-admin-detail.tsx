@@ -49,7 +49,6 @@ import {
   FolderHeart,
   Loader2,
   HardDrive,
-  UserCheck,
   ExternalLink,
   Camera,
   Plus,
@@ -491,7 +490,7 @@ export default function ApexAdminDetail({
       {/* Tabs Layout - Perfectly aligned across container width with no overflow */}
       <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full space-y-6">
         <div className="w-full bg-black/40 border border-white/10 rounded-2xl p-1.5 shadow-xl">
-          <div className="grid grid-cols-2 sm:grid-cols-5 gap-1.5 w-full">
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-1.5 w-full">
             <button
               type="button"
               onClick={() => setActiveTab('overview')}
@@ -536,23 +535,9 @@ export default function ApexAdminDetail({
 
             <button
               type="button"
-              onClick={() => setActiveTab('attendance')}
-              className={cn(
-                "w-full py-3 px-3 rounded-xl font-bold text-xs flex items-center justify-center gap-2 transition-all cursor-pointer select-none",
-                activeTab === 'attendance'
-                  ? "bg-cyan-500 text-black shadow-md shadow-cyan-500/20 font-black"
-                  : "text-white/70 hover:text-white hover:bg-white/5"
-              )}
-            >
-              <UserCheck className="h-4 w-4" />
-              <span>Check-in Logs</span>
-            </button>
-
-            <button
-              type="button"
               onClick={() => setActiveTab('missed-attendance')}
               className={cn(
-                "w-full py-3 px-3 rounded-xl font-bold text-xs flex items-center justify-center gap-2 transition-all col-span-2 sm:col-span-1 cursor-pointer select-none",
+                "w-full py-3 px-3 rounded-xl font-bold text-xs flex items-center justify-center gap-2 transition-all cursor-pointer select-none",
                 activeTab === 'missed-attendance'
                   ? "bg-cyan-500 text-black shadow-md shadow-cyan-500/20 font-black"
                   : "text-white/70 hover:text-white hover:bg-white/5"
@@ -1189,81 +1174,7 @@ export default function ApexAdminDetail({
           </Card>
         </TabsContent>
 
-        {/* Tab 4: Check-in Logs */}
-        <TabsContent value="attendance" className="mt-6">
-          <Card className="border-white/5 bg-black/40 backdrop-blur-xl rounded-2xl p-6">
-            <CardHeader className="px-0 pt-0">
-              <CardTitle className="text-lg font-bold text-white flex items-center gap-2">
-                <UserCheck className="h-5 w-5 text-cyan-400" />
-                Crew Logged Hours & Check-ins
-              </CardTitle>
-              <CardDescription className="text-xs text-neutral-400">
-                Tracked timings and session hours for coverage assignments.
-              </CardDescription>
-            </CardHeader>
-            <CardContent className="px-0 pb-0">
-              {/* Gather assignments check-in info */}
-              {!request.assignments || request.assignments.length === 0 ? (
-                <div className="py-12 text-center text-sm text-neutral-500">
-                  No assignments checked in yet.
-                </div>
-              ) : (
-                <div className="overflow-x-auto">
-                  <table className="w-full text-left border-collapse border border-white/5 rounded-2xl overflow-hidden">
-                    <thead>
-                      <tr className="border-b border-white/5 text-xs font-bold uppercase tracking-wider text-neutral-400 bg-white/[0.01]">
-                        <th className="py-4 px-6">Crew Member</th>
-                        <th className="py-4 px-6">Check-In</th>
-                        <th className="py-4 px-6">Check-Out</th>
-                        <th className="py-4 px-6 text-center">Hours Logged</th>
-                      </tr>
-                    </thead>
-                    <tbody className="divide-y divide-white/5 text-sm">
-                      {request.assignments.map((assignment: any) => {
-                        const attendance = assignment.apex_attendance?.[0]
-                        return (
-                          <tr key={assignment.id} className="hover:bg-white/[0.01] transition-colors">
-                            <td className="py-4 px-6">
-                              <div className="flex items-center gap-2">
-                                <div className="h-6 w-6 rounded-full overflow-hidden bg-neutral-900 border border-white/5 shrink-0">
-                                  {assignment.profiles?.avatar_url ? (
-                                    <img src={assignment.profiles.avatar_url} alt="" className="h-full w-full object-cover" />
-                                  ) : (
-                                    <div className="h-full w-full flex items-center justify-center text-[8px] font-bold text-neutral-500 uppercase">
-                                      {(assignment.profiles?.full_name || 'U').slice(0, 2)}
-                                    </div>
-                                  )}
-                                </div>
-                                <span className="font-bold text-white">{assignment.profiles?.full_name}</span>
-                              </div>
-                            </td>
-                            <td className="py-4 px-6 text-neutral-300 text-xs">
-                              {attendance?.checked_in_at 
-                                ? new Date(attendance.checked_in_at).toLocaleString() 
-                                : <span className="italic text-neutral-600">Not checked in</span>}
-                            </td>
-                            <td className="py-4 px-6 text-neutral-300 text-xs">
-                              {attendance?.checked_out_at 
-                                ? new Date(attendance.checked_out_at).toLocaleString() 
-                                : <span className="italic text-neutral-600">Not checked out</span>}
-                            </td>
-                            <td className="py-4 px-6 text-center text-cyan-400 font-extrabold">
-                              {attendance?.hours_logged !== null && attendance?.hours_logged !== undefined
-                                ? `${attendance.hours_logged} hrs` 
-                                : <span className="text-neutral-600 font-normal italic">-</span>}
-                            </td>
-                          </tr>
-                        )
-                      })}
-                    </tbody>
-                  </table>
-                </div>
-              )}
-            </CardContent>
-          </Card>
-        </TabsContent>
-
-        {/* Tab 5: Missed Attendance */}
+        {/* Tab 4: Missed Attendance */}
         <TabsContent value="missed-attendance" className="mt-6 space-y-4">
           <Card className="border-white/5 bg-black/40 backdrop-blur-xl rounded-2xl p-6 shadow-xl">
             <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-white/5 pb-5">

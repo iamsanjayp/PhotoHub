@@ -51,8 +51,6 @@ export default async function DashboardPage() {
       if (!req) return false
       if (['completed', 'delivered', 'rejected'].includes(req.status)) return false
       if (a.status === 'rejected') return false
-      const hasCheckedOut = a.apex_attendance?.some((att: any) => !!att.checked_out_at)
-      if (hasCheckedOut) return false
       return a.status === 'pending' || a.status === 'accepted'
     })
     .slice(0, 3)
