@@ -84,8 +84,6 @@ export async function getMeetingDetails(meetingId: string) {
   }
 }
 
-import { sendMeetingInviteEmail } from '@/lib/email'
-
 // 3. Create a new meeting (Admin or Board Member)
 export async function createMeeting(input: {
   title: string
@@ -145,30 +143,6 @@ export async function createMeeting(input: {
       }))
 
       await adminClient.from('notifications').insert(notifications)
-
-      // Send automated invite email from photohub@bitsathy.ac.in if invite only is enabled
-      if (meeting.is_invite_only) {
-        try {
-          const { data: invitedProfiles } = await adminClient
-            .from('profiles')
-            .select('email')
-            .in('id', input.invited_user_ids)
-
-          const emails = (invitedProfiles || []).map((p: any) => p.email).filter(Boolean)
-          if (emails.length > 0) {
-            const mailRes = await sendMeetingInviteEmail(emails, {
-              id: meeting.id,
-              title: meeting.title,
-              description: meeting.description,
-              scheduled_at: meeting.scheduled_at,
-              venue: meeting.venue,
-            })
-            console.log('[Meeting Invite] Dispatch result:', mailRes)
-          }
-        } catch (mailErr) {
-          console.error('Error fetching member emails for invite:', mailErr)
-        }
-      }
     }
 
     revalidatePath('/meetings')
@@ -257,30 +231,6 @@ export async function updateMeeting(
           source_id: meetingId,
         }))
         await adminClient.from('notifications').insert(notifications)
-
-        // Send email to newly invited members if invite-only is enabled
-        if (updatedMeeting.is_invite_only) {
-          try {
-            const { data: newlyInvitedProfiles } = await adminClient
-              .from('profiles')
-              .select('email')
-              .in('id', toAdd)
-
-            const emails = (newlyInvitedProfiles || []).map((p: any) => p.email).filter(Boolean)
-            if (emails.length > 0) {
-              const mailRes = await sendMeetingInviteEmail(emails, {
-                id: updatedMeeting.id,
-                title: updatedMeeting.title,
-                description: updatedMeeting.description,
-                scheduled_at: updatedMeeting.scheduled_at,
-                venue: updatedMeeting.venue,
-              })
-              console.log('[Meeting Invite Update] Dispatch result:', mailRes)
-            }
-          } catch (mailErr) {
-            console.error('Error fetching member emails for update:', mailErr)
-          }
-        }
       }
     }
 
@@ -381,6 +331,10 @@ export async function deleteMeeting(meetingId: string) {
   try {
     await assertAdminOrBoard()
     const adminClient = await createAdminClient()
+
+    // Clean up attendance and invites explicitly first
+    await adminClient.from('meeting_attendance').delete().eq('meeting_id', meetingId)
+    await adminClient.from('meeting_invites').delete().eq('meeting_id', meetingId)
 
     const { error } = await adminClient
       .from('meetings')

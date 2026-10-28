@@ -2,7 +2,6 @@
 
 import { createAdminClient } from '@/lib/supabase/admin'
 import { getCurrentProfile } from './auth'
-import { revalidatePath } from 'next/cache'
 import { isAdminOrBoard } from '@/lib/constants/roles'
 import fs from 'fs'
 import path from 'path'
@@ -57,56 +56,111 @@ export const DEFAULT_WEB_LINKS: WebLinkItem[] = [
   },
 ]
 
-// Local JSON backup path
-function getLocalFallbackPath() {
-  return path.join(process.cwd(), 'src', 'data', 'web-links.json')
+// Fallback 1: Announcements table storage
+async function getLinksFromAnnouncements(adminClient: any): Promise<WebLinkItem[] | null> {
+  try {
+    const { data } = await adminClient
+      .from('announcements')
+      .select('content')
+      .eq('title', '__SYSTEM_HERO_WEB_LINKS__')
+      .maybeSingle()
+
+    if (data?.content) {
+      const parsed = JSON.parse(data.content)
+      if (Array.isArray(parsed) && parsed.length > 0) return parsed
+    }
+  } catch (e) {
+    console.error('getLinksFromAnnouncements error:', e)
+  }
+  return null
 }
 
+async function saveLinksToAnnouncements(adminClient: any, links: WebLinkItem[]) {
+  try {
+    const { data: existing } = await adminClient
+      .from('announcements')
+      .select('id')
+      .eq('title', '__SYSTEM_HERO_WEB_LINKS__')
+      .maybeSingle()
+
+    if (existing) {
+      await adminClient
+        .from('announcements')
+        .update({ content: JSON.stringify(links), updated_at: new Date().toISOString() })
+        .eq('id', existing.id)
+    } else {
+      await adminClient
+        .from('announcements')
+        .insert({
+          title: '__SYSTEM_HERO_WEB_LINKS__',
+          content: JSON.stringify(links),
+          is_pinned: false,
+          priority: 0,
+        })
+    }
+  } catch (e) {
+    console.error('saveLinksToAnnouncements error:', e)
+  }
+}
+
+// Fallback 2: Local JSON file
 function readLocalLinks(): WebLinkItem[] {
   try {
-    const filePath = getLocalFallbackPath()
+    const filePath = path.join(process.cwd(), 'src', 'data', 'web-links.json')
     if (fs.existsSync(filePath)) {
       const raw = fs.readFileSync(filePath, 'utf-8')
       const parsed = JSON.parse(raw)
       if (Array.isArray(parsed) && parsed.length > 0) return parsed
     }
   } catch (e) {
-    console.error('Error reading local web-links.json:', e)
+    // Ignore in production environments without local FS write
   }
   return DEFAULT_WEB_LINKS
 }
 
 function writeLocalLinks(links: WebLinkItem[]) {
   try {
-    const filePath = getLocalFallbackPath()
+    const filePath = path.join(process.cwd(), 'src', 'data', 'web-links.json')
     const dir = path.dirname(filePath)
     if (!fs.existsSync(dir)) {
       fs.mkdirSync(dir, { recursive: true })
     }
     fs.writeFileSync(filePath, JSON.stringify(links, null, 2), 'utf-8')
   } catch (e) {
-    console.error('Error writing local web-links.json:', e)
+    // Non-fatal if filesystem is read-only
   }
 }
 
 // 1. Get all web links
-export async function getWebLinks() {
+export async function getWebLinks(): Promise<{ data: WebLinkItem[] }> {
   try {
     const adminClient = await createAdminClient()
-    const { data, error } = await adminClient
-      .from('web_links')
-      .select('*')
-      .order('sort_order', { ascending: true })
+    
+    // Try primary web_links table
+    try {
+      const { data, error } = await adminClient
+        .from('web_links')
+        .select('*')
+        .order('sort_order', { ascending: true })
 
-    if (error || !data || data.length === 0) {
-      const fallback = readLocalLinks()
-      return { data: fallback }
+      if (!error && data && data.length > 0) {
+        return { data }
+      }
+    } catch {
+      // Table may not exist yet
     }
 
-    return { data }
+    // Try fallback announcements store
+    const annLinks = await getLinksFromAnnouncements(adminClient)
+    if (annLinks && annLinks.length > 0) {
+      return { data: annLinks }
+    }
+
+    // Try local JSON
+    const local = readLocalLinks()
+    return { data: local }
   } catch {
-    const fallback = readLocalLinks()
-    return { data: fallback }
+    return { data: DEFAULT_WEB_LINKS }
   }
 }
 
@@ -136,22 +190,29 @@ export async function createWebLink(input: {
       created_at: new Date().toISOString(),
     }
 
-    // Attempt DB insert
-    let dbSuccess = false
+    const adminClient = await createAdminClient()
+
+    // 1. Attempt DB insert into web_links
+    let tableSuccess = false
     try {
-      const adminClient = await createAdminClient()
       const { error } = await adminClient.from('web_links').insert(newItem)
-      if (!error) dbSuccess = true
+      if (!error) tableSuccess = true
     } catch {
-      dbSuccess = false
+      tableSuccess = false
     }
 
-    // Always sync local fallback
-    const current = readLocalLinks()
-    writeLocalLinks([...current, newItem])
+    // 2. Fetch current list to update fallback
+    const { data: currentLinks } = await getWebLinks()
+    const updatedList = [...currentLinks, newItem]
 
-    revalidatePath('/')
-    revalidatePath('/admin/hero')
+    // 3. Save to announcements fallback if table was missing or failed
+    if (!tableSuccess) {
+      await saveLinksToAnnouncements(adminClient, updatedList)
+    }
+
+    // 4. Try local disk backup
+    writeLocalLinks(updatedList)
+
     return { success: true, data: newItem }
   } catch (error: any) {
     console.error('createWebLink error:', error)
@@ -187,21 +248,27 @@ export async function updateWebLink(
     if (input.accent !== undefined) updates.accent = input.accent?.trim() || null
     if (input.sort_order !== undefined) updates.sort_order = input.sort_order
 
-    // Attempt DB update
+    const adminClient = await createAdminClient()
+
+    // 1. Attempt DB update
+    let tableSuccess = false
     try {
-      const adminClient = await createAdminClient()
-      await adminClient.from('web_links').update(updates).eq('id', id)
+      const { error } = await adminClient.from('web_links').update(updates).eq('id', id)
+      if (!error) tableSuccess = true
     } catch {
-      // Ignored
+      tableSuccess = false
     }
 
-    // Update local fallback
-    const current = readLocalLinks()
-    const updated = current.map((item) => (item.id === id ? { ...item, ...updates } : item))
-    writeLocalLinks(updated)
+    // 2. Update fallback store
+    const { data: currentLinks } = await getWebLinks()
+    const updatedList = currentLinks.map((item) => (item.id === id ? { ...item, ...updates } : item))
 
-    revalidatePath('/')
-    revalidatePath('/admin/hero')
+    if (!tableSuccess) {
+      await saveLinksToAnnouncements(adminClient, updatedList)
+    }
+
+    writeLocalLinks(updatedList)
+
     return { success: true }
   } catch (error: any) {
     console.error('updateWebLink error:', error)
@@ -217,21 +284,27 @@ export async function deleteWebLink(id: string) {
       return { error: 'Unauthorized. Only admins can delete web links.' }
     }
 
-    // Attempt DB delete
+    const adminClient = await createAdminClient()
+
+    // 1. Attempt DB delete
+    let tableSuccess = false
     try {
-      const adminClient = await createAdminClient()
-      await adminClient.from('web_links').delete().eq('id', id)
+      const { error } = await adminClient.from('web_links').delete().eq('id', id)
+      if (!error) tableSuccess = true
     } catch {
-      // Ignored
+      tableSuccess = false
     }
 
-    // Delete from local fallback
-    const current = readLocalLinks()
-    const filtered = current.filter((item) => item.id !== id)
-    writeLocalLinks(filtered)
+    // 2. Update fallback store
+    const { data: currentLinks } = await getWebLinks()
+    const filteredList = currentLinks.filter((item) => item.id !== id)
 
-    revalidatePath('/')
-    revalidatePath('/admin/hero')
+    if (!tableSuccess) {
+      await saveLinksToAnnouncements(adminClient, filteredList)
+    }
+
+    writeLocalLinks(filteredList)
+
     return { success: true }
   } catch (error: any) {
     console.error('deleteWebLink error:', error)

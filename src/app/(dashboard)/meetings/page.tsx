@@ -343,9 +343,10 @@ export default function MeetingsPage() {
       if (res.error) throw new Error(res.error)
     },
     onSuccess: () => {
-      toast.success('Meeting deleted')
+      toast.success('Meeting deleted successfully')
       setSelectedMeetingId(null)
       setViewMoreMeeting(null)
+      setIsEditOpen(false)
       queryClient.invalidateQueries({ queryKey: ['meetings'] })
     },
     onError: (err: any) => {
@@ -493,15 +494,31 @@ export default function MeetingsPage() {
                     </div>
 
                     {isLeader && (
-                      <Button
-                        size="icon"
-                        variant="ghost"
-                        onClick={() => handleOpenEdit(m)}
-                        className="h-7 w-7 text-neutral-400 hover:text-cyan-400 hover:bg-cyan-500/10 rounded-lg shrink-0"
-                        title="Edit Meeting"
-                      >
-                        <Pencil className="h-3.5 w-3.5" />
-                      </Button>
+                      <div className="flex items-center gap-1 shrink-0">
+                        <Button
+                          size="icon"
+                          variant="ghost"
+                          onClick={() => handleOpenEdit(m)}
+                          className="h-7 w-7 text-neutral-400 hover:text-cyan-400 hover:bg-cyan-500/10 rounded-lg"
+                          title="Edit Meeting"
+                        >
+                          <Pencil className="h-3.5 w-3.5" />
+                        </Button>
+                        <Button
+                          size="icon"
+                          variant="ghost"
+                          disabled={deleteMeetingMutation.isPending}
+                          onClick={() => {
+                            if (confirm(`Are you sure you want to delete meeting "${m.title}"? This cannot be undone.`)) {
+                              deleteMeetingMutation.mutate(m.id)
+                            }
+                          }}
+                          className="h-7 w-7 text-neutral-400 hover:text-red-400 hover:bg-red-500/10 rounded-lg"
+                          title="Delete Meeting"
+                        >
+                          <Trash2 className="h-3.5 w-3.5" />
+                        </Button>
+                      </div>
                     )}
                   </div>
 
@@ -677,18 +694,34 @@ export default function MeetingsPage() {
 
               <DialogFooter className="flex-col sm:flex-row gap-2 pt-2">
                 {isLeader && (
-                  <Button
-                    variant="outline"
-                    onClick={() => {
-                      const m = viewMoreMeeting
-                      setViewMoreMeeting(null)
-                      handleOpenEdit(m)
-                    }}
-                    className="rounded-xl text-xs font-bold border-cyan-500/30 text-cyan-400 hover:bg-cyan-500/10"
-                  >
-                    <Pencil className="h-3.5 w-3.5 mr-1.5" />
-                    Edit Meeting
-                  </Button>
+                  <>
+                    <Button
+                      variant="outline"
+                      disabled={deleteMeetingMutation.isPending}
+                      onClick={() => {
+                        const m = viewMoreMeeting
+                        if (confirm(`Are you sure you want to delete meeting "${m.title}"? This cannot be undone.`)) {
+                          deleteMeetingMutation.mutate(m.id)
+                        }
+                      }}
+                      className="rounded-xl text-xs font-bold border-red-500/30 text-red-400 hover:bg-red-500/10 hover:text-red-300"
+                    >
+                      <Trash2 className="h-3.5 w-3.5 mr-1.5" />
+                      Delete Meeting
+                    </Button>
+                    <Button
+                      variant="outline"
+                      onClick={() => {
+                        const m = viewMoreMeeting
+                        setViewMoreMeeting(null)
+                        handleOpenEdit(m)
+                      }}
+                      className="rounded-xl text-xs font-bold border-cyan-500/30 text-cyan-400 hover:bg-cyan-500/10"
+                    >
+                      <Pencil className="h-3.5 w-3.5 mr-1.5" />
+                      Edit Meeting
+                    </Button>
+                  </>
                 )}
                 <Button
                   onClick={() => {
@@ -784,7 +817,7 @@ export default function MeetingsPage() {
                     <Lock className="h-4 w-4 text-amber-500 shrink-0" /> Invite Only Meeting
                   </div>
                   <p className="text-xs text-neutral-500">
-                    When enabled, automated invitation emails will be sent from <strong>photohub@bitsathy.ac.in</strong> to invited members.
+                    Only invited members can view this meeting and appear on its attendance roster.
                   </p>
                 </div>
                 <Switch checked={isInviteOnly} onCheckedChange={setIsInviteOnly} />
@@ -952,7 +985,7 @@ export default function MeetingsPage() {
                     <Lock className="h-4 w-4 text-amber-500 shrink-0" /> Invite Only Meeting
                   </div>
                   <p className="text-xs text-neutral-500">
-                    Automated invitation emails are sent to newly invited members from <strong>photohub@bitsathy.ac.in</strong>.
+                    Only invited members can view this meeting and appear on its attendance roster.
                   </p>
                 </div>
                 <Switch checked={editIsInviteOnly} onCheckedChange={setEditIsInviteOnly} />
@@ -1024,21 +1057,40 @@ export default function MeetingsPage() {
             </div>
           </div>
 
-          <DialogFooter className="gap-2 sm:gap-0 flex-col sm:flex-row">
-            <Button
-              variant="ghost"
-              onClick={() => setIsEditOpen(false)}
-              className="rounded-xl text-xs font-semibold"
-            >
-              Cancel
-            </Button>
-            <Button
-              onClick={() => updateMeetingMutation.mutate()}
-              disabled={updateMeetingMutation.isPending || !editTitle || !editScheduledAt}
-              className="bg-cyan-500 hover:bg-cyan-400 text-neutral-950 font-bold rounded-xl text-xs"
-            >
-              {updateMeetingMutation.isPending ? 'Saving Changes...' : 'Save Changes'}
-            </Button>
+          <DialogFooter className="gap-2 sm:gap-0 flex-col sm:flex-row sm:justify-between w-full">
+            {isLeader && editMeetingId && (
+              <Button
+                type="button"
+                variant="outline"
+                disabled={deleteMeetingMutation.isPending}
+                onClick={() => {
+                  if (confirm(`Delete meeting "${editTitle}"? This cannot be undone.`)) {
+                    deleteMeetingMutation.mutate(editMeetingId)
+                  }
+                }}
+                className="rounded-xl text-xs font-bold border-red-500/30 text-red-400 hover:bg-red-500/10 hover:text-red-300 w-full sm:w-auto"
+              >
+                <Trash2 className="h-3.5 w-3.5 mr-1.5" />
+                Delete Meeting
+              </Button>
+            )}
+            <div className="flex items-center gap-2 w-full sm:w-auto justify-end">
+              <Button
+                type="button"
+                variant="ghost"
+                onClick={() => setIsEditOpen(false)}
+                className="rounded-xl text-xs font-semibold"
+              >
+                Cancel
+              </Button>
+              <Button
+                onClick={() => updateMeetingMutation.mutate()}
+                disabled={updateMeetingMutation.isPending || !editTitle || !editScheduledAt}
+                className="bg-cyan-500 hover:bg-cyan-400 text-neutral-950 font-bold rounded-xl text-xs"
+              >
+                {updateMeetingMutation.isPending ? 'Saving Changes...' : 'Save Changes'}
+              </Button>
+            </div>
           </DialogFooter>
         </DialogContent>
       </Dialog>

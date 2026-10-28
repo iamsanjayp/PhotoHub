@@ -491,6 +491,7 @@ export async function getEventRegistrations(eventId: string) {
       .from('event_registrations')
       .select('*, profiles(*)')
       .eq('event_id', eventId)
+      .not('status', 'like', 'volunteer%')
       .order('registered_at', { ascending: true })
 
     if (error) throw error

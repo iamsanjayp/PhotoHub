@@ -1,6 +1,8 @@
 import { getCurrentProfile } from '@/actions/auth'
 import PublicNavbar from '@/components/layout/public-navbar'
 
+export const dynamic = 'force-dynamic'
+
 export default async function PublicLayout({
   children,
 }: {

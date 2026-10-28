@@ -103,7 +103,9 @@ export default function AdminEventDashboard({
 }: AdminEventDashboardProps) {
   const router = useRouter()
   const [activeTab, setActiveTab] = useState('overview')
-  const [registrations, setRegistrations] = useState(initialRegistrations)
+  const [registrations, setRegistrations] = useState(
+    (initialRegistrations || []).filter((r: any) => !r.status?.startsWith('volunteer'))
+  )
   const [submissions, setSubmissions] = useState(initialSubmissions)
   const [analytics, setAnalytics] = useState(initialAnalytics)
   const [selectedUserIds, setSelectedUserIds] = useState<string[]>([])
@@ -466,6 +468,8 @@ export default function AdminEventDashboard({
             return [...prev, ...newRows]
           })
         }
+        // Exclude newly assigned volunteers from normal participants list
+        setRegistrations((prev) => prev.filter((r: any) => !selectedVolunteerUserIds.includes(r.user_id)))
         setAssignVolunteerModalOpen(false)
         setSelectedVolunteerUserIds([])
         router.refresh()

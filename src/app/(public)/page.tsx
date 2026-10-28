@@ -118,43 +118,7 @@ export default function LandingPage() {
             Explore our curated masterpieces and official campus channels below.
           </motion.p>
 
-          <motion.div
-            initial={{ opacity: 0, y: 15 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ delay: 0.3 }}
-            className="pt-2 flex flex-wrap items-center justify-center gap-3"
-          >
-            {profile ? (
-              <Button
-                asChild
-                className="bg-cyan-500 hover:bg-cyan-400 text-neutral-950 font-bold px-6 h-11 rounded-2xl shadow-lg shadow-cyan-500/20 gap-2 text-sm"
-              >
-                <Link href="/dashboard">
-                  Open Workspace <ArrowRight className="h-4 w-4" />
-                </Link>
-              </Button>
-            ) : (
-              <Button
-                asChild
-                className="bg-cyan-500 hover:bg-cyan-400 text-neutral-950 font-bold px-6 h-11 rounded-2xl shadow-lg shadow-cyan-500/20 gap-2 text-sm"
-              >
-                <Link href="/login">
-                  Member Sign In <ArrowRight className="h-4 w-4" />
-                </Link>
-              </Button>
-            )}
 
-            <Button
-              asChild
-              variant="outline"
-              className="border-white/10 hover:bg-white/5 text-neutral-200 font-bold px-6 h-11 rounded-2xl gap-2 text-sm"
-            >
-              <Link href="/feed">
-                <Compass className="h-4 w-4 text-cyan-400" />
-                Community Feed
-              </Link>
-            </Button>
-          </motion.div>
         </div>
 
         {/* 1. Large Spotlight Gallery Stage */}

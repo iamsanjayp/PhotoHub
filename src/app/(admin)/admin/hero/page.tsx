@@ -1,5 +1,7 @@
 'use client'
 
+export const dynamic = 'force-dynamic'
+
 import { useState } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { getGalleryItems, createGalleryItem, updateGalleryItem, deleteGalleryItem } from '@/actions/gallery'
@@ -30,7 +32,9 @@ import {
   Upload,
   Globe,
   CheckCircle2,
+  Loader2,
 } from 'lucide-react'
+import { MediaUpload } from '@/components/ui/media-upload'
 import { toast } from 'sonner'
 import { cn } from '@/lib/utils'
 
@@ -55,8 +59,8 @@ export default function AdminHeroPage() {
   const [photoTitle, setPhotoTitle] = useState('')
   const [photoCategory, setPhotoCategory] = useState('Campus')
   const [photoCaption, setPhotoCaption] = useState('')
-  const [photoFile, setPhotoFile] = useState<File | null>(null)
   const [photoPreviewUrl, setPhotoPreviewUrl] = useState<string | null>(null)
+  const [photoDriveFileId, setPhotoDriveFileId] = useState<string | null>(null)
   const [isPhotoSubmitting, setIsPhotoSubmitting] = useState(false)
 
   // --- Web Link Modal States ---
@@ -106,8 +110,8 @@ export default function AdminHeroPage() {
     setPhotoTitle('')
     setPhotoCategory('Campus')
     setPhotoCaption('')
-    setPhotoFile(null)
     setPhotoPreviewUrl(null)
+    setPhotoDriveFileId(null)
     setIsPhotoModalOpen(true)
   }
 
@@ -116,8 +120,8 @@ export default function AdminHeroPage() {
     setPhotoTitle(item.title || '')
     setPhotoCategory(item.category || 'Campus')
     setPhotoCaption(item.caption || '')
-    setPhotoFile(null)
     setPhotoPreviewUrl(item.url || null)
+    setPhotoDriveFileId(item.cloudinary_public_id || null)
     setIsPhotoModalOpen(true)
   }
 
@@ -128,36 +132,21 @@ export default function AdminHeroPage() {
       return
     }
 
+    if (!photoPreviewUrl) {
+      toast.error('Please upload an image')
+      return
+    }
+
     try {
       setIsPhotoSubmitting(true)
-      let finalImageUrl = photoPreviewUrl || ''
-
-      if (photoFile) {
-        const formData = new FormData()
-        formData.append('file', photoFile)
-        const uploadRes = await fetch('/api/upload', {
-          method: 'POST',
-          body: formData,
-        })
-        if (!uploadRes.ok) {
-          const errData = await uploadRes.json().catch(() => ({}))
-          throw new Error(errData.error || 'Failed to upload image file')
-        }
-        const uploadData = await uploadRes.json()
-        finalImageUrl = uploadData.url
-      }
-
-      if (!finalImageUrl) {
-        toast.error('Please upload an image')
-        return
-      }
 
       if (editingPhoto && !editingPhoto.is_seed) {
         const res = await updateGalleryItem(editingPhoto.id, {
           title: photoTitle.trim(),
           category: photoCategory,
           caption: photoCaption.trim(),
-          image_url: finalImageUrl,
+          image_url: photoPreviewUrl,
+          drive_file_id: photoDriveFileId,
         })
         if (res.error) throw new Error(res.error)
         toast.success('Gallery photo updated!')
@@ -166,7 +155,8 @@ export default function AdminHeroPage() {
           title: photoTitle.trim(),
           category: photoCategory,
           caption: photoCaption.trim(),
-          image_url: finalImageUrl,
+          image_url: photoPreviewUrl,
+          drive_file_id: photoDriveFileId,
         })
         if (res.error) throw new Error(res.error)
         toast.success('Photo added to showcase gallery!')
@@ -499,40 +489,75 @@ export default function AdminHeroPage() {
 
             {/* Image upload / preview */}
             <div className="space-y-2">
-              <Label className="text-xs font-semibold">Image File *</Label>
+              <Label className="text-xs font-semibold">Image File (Stored in Google Drive) *</Label>
               {photoPreviewUrl ? (
-                <div className="relative aspect-[16/9] w-full rounded-2xl overflow-hidden border border-white/10 bg-black">
+                <div className="relative aspect-[16/9] w-full rounded-2xl overflow-hidden border border-white/10 bg-black group">
                   <img src={photoPreviewUrl} alt="Preview" className="w-full h-full object-cover" />
-                  <Button
-                    type="button"
-                    size="sm"
-                    variant="ghost"
-                    onClick={() => {
-                      setPhotoFile(null)
-                      setPhotoPreviewUrl(null)
-                    }}
-                    className="absolute top-2 right-2 h-7 px-2 text-xs bg-black/60 hover:bg-black/90 text-white rounded-lg"
-                  >
-                    Change
-                  </Button>
+                  <div className="absolute inset-0 bg-black/50 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center gap-2">
+                    <MediaUpload
+                      accept="image/*"
+                      onSuccess={(result) => {
+                        setPhotoPreviewUrl(result.info.url)
+                        setPhotoDriveFileId(result.info.public_id)
+                      }}
+                    >
+                      {({ open, isUploading }) => (
+                        <Button
+                          type="button"
+                          size="sm"
+                          onClick={() => open()}
+                          disabled={isUploading}
+                          className="h-8 text-xs bg-black/70 hover:bg-black/90 text-white rounded-xl gap-1.5"
+                        >
+                          {isUploading ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Upload className="h-3.5 w-3.5" />}
+                          Replace
+                        </Button>
+                      )}
+                    </MediaUpload>
+                    <Button
+                      type="button"
+                      size="sm"
+                      variant="destructive"
+                      onClick={() => {
+                        setPhotoPreviewUrl(null)
+                        setPhotoDriveFileId(null)
+                      }}
+                      className="h-8 text-xs rounded-xl"
+                    >
+                      Remove
+                    </Button>
+                  </div>
                 </div>
               ) : (
-                <div className="border border-dashed border-white/10 rounded-2xl p-6 text-center hover:bg-white/[0.02] transition-colors">
-                  <Upload className="h-8 w-8 text-neutral-500 mx-auto mb-2" />
-                  <p className="text-xs text-neutral-400 mb-2">Drag and drop photo or click to browse</p>
-                  <Input
-                    type="file"
-                    accept="image/*"
-                    onChange={(e) => {
-                      const file = e.target.files?.[0]
-                      if (file) {
-                        setPhotoFile(file)
-                        setPhotoPreviewUrl(URL.createObjectURL(file))
-                      }
-                    }}
-                    className="text-xs file:bg-cyan-500 file:text-black file:border-none file:rounded-lg file:font-bold file:text-xs"
-                  />
-                </div>
+                <MediaUpload
+                  accept="image/*"
+                  onSuccess={(result) => {
+                    setPhotoPreviewUrl(result.info.url)
+                    setPhotoDriveFileId(result.info.public_id)
+                  }}
+                >
+                  {({ open, isUploading }) => (
+                    <button
+                      type="button"
+                      onClick={() => open()}
+                      disabled={isUploading}
+                      className="w-full border-2 border-dashed border-white/10 hover:border-cyan-500/50 bg-white/[0.02] hover:bg-white/[0.04] rounded-2xl flex flex-col items-center justify-center p-6 gap-2 text-neutral-400 hover:text-white transition-all select-none group"
+                    >
+                      {isUploading ? (
+                        <>
+                          <Loader2 className="h-8 w-8 text-cyan-400 animate-spin" />
+                          <span className="text-xs font-semibold text-neutral-300">Uploading to Google Drive...</span>
+                        </>
+                      ) : (
+                        <>
+                          <Upload className="h-8 w-8 text-neutral-500 group-hover:text-cyan-400 transition-colors" />
+                          <span className="text-xs font-semibold">Click to upload photo</span>
+                          <span className="text-[10px] text-neutral-500">Stored safely on Google Drive</span>
+                        </>
+                      )}
+                    </button>
+                  )}
+                </MediaUpload>
               )}
             </div>
 
