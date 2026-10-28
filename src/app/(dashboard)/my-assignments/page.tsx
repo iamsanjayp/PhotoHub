@@ -86,12 +86,11 @@ export default function MyAssignmentsPage() {
     }
 
     setIsClaiming(true)
-    const isEvent = !!claimShoot?.is_event_volunteer
     const res = await addMissedAttendanceRecord({
-      sourceType: isEvent ? 'event' : 'shoot',
-      sourceId: isEvent ? (claimShoot.event_id || claimShoot.id) : claimShoot.id,
+      sourceType: 'shoot',
+      sourceId: claimShoot.id,
       userId: profile?.id,
-      name: profile?.full_name || 'Volunteer',
+      name: profile?.full_name || 'Member',
       email: profile?.email || '',
       rollNumber: claimRollNumber.trim(),
       hours: claimSelectedHours,
@@ -378,15 +377,9 @@ export default function MyAssignmentsPage() {
                 <div className="p-6 pb-4 border-b border-white/5 flex flex-col sm:flex-row justify-between sm:items-center gap-4 bg-white/[0.005]">
                   <div className="space-y-1">
                     <div className="flex items-center gap-2 flex-wrap">
-                      {assignment.assignment_type === 'event_volunteer' ? (
-                        <Badge className="bg-purple-500/15 text-purple-300 border border-purple-500/30 text-[10px] font-bold uppercase tracking-wider px-2.5 py-0.5 rounded-full">
-                          Event Volunteer
-                        </Badge>
-                      ) : (
-                        <Badge className="bg-cyan-500/15 text-cyan-300 border border-cyan-500/30 text-[10px] font-bold uppercase tracking-wider capitalize px-2.5 py-0.5 rounded-full">
-                          Shoot Crew
-                        </Badge>
-                      )}
+                      <Badge className="bg-cyan-500/15 text-cyan-300 border border-cyan-500/30 text-[10px] font-bold uppercase tracking-wider capitalize px-2.5 py-0.5 rounded-full">
+                        Shoot Crew
+                      </Badge>
 
                       <Badge
                         className={cn(
