@@ -23,6 +23,7 @@
     "lucide-react": "^1.16.0",
     "motion": "^12.40.0",
     "next": "16.2.6",
+    "nodemailer": "^10.2.1",
     "postcss": "^8.5.15",
     "react": "19.2.4",
     "react-day-picker": "^10.0.1",
@@ -39,6 +40,7 @@
   },
   "devDependencies": {
     "@types/node": "^25.9.1",
+    "@types/nodemailer": "^8.0.2",
     "@types/react": "^19.2.15",
     "@types/react-dom": "^19.2.3",
     "babel-plugin-react-compiler": "1.0.0",

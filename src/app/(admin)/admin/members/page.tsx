@@ -1,6 +1,6 @@
 'use client'
 
-import { useState } from 'react'
+import { useState, useMemo } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { getMembers } from '@/actions/members'
 import { adminAssignRole, deactivateAccount, reactivateAccount } from '@/actions/auth'
@@ -13,7 +13,7 @@ import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar'
 import { Badge } from '@/components/ui/badge'
 import { Skeleton } from '@/components/ui/skeleton'
 import { format } from 'date-fns'
-import { Users, Search, CheckCircle, Ban, RefreshCw, KeyRound, ShieldAlert } from 'lucide-react'
+import { Users, Search, CheckCircle, Ban, RefreshCw, KeyRound, ShieldAlert, Filter, RotateCcw } from 'lucide-react'
 import { toast } from 'sonner'
 import { cn } from '@/lib/utils'
 import { BatchCleanupDialog } from '@/components/admin/batch-cleanup-dialog'
@@ -22,6 +22,9 @@ export default function AdminMembersPage() {
   const queryClient = useQueryClient()
   const [search, setSearch] = useState('')
   const [statusFilter, setStatusFilter] = useState<'all' | 'active' | 'suspended'>('all')
+  const [roleFilter, setRoleFilter] = useState<string>('all')
+  const [departmentFilter, setDepartmentFilter] = useState<string>('all')
+  const [batchFilter, setBatchFilter] = useState<string>('all')
 
   // Query members list
   const { data: result, isLoading } = useQuery({
@@ -37,6 +40,27 @@ export default function AdminMembersPage() {
   const members = result || []
   const activeCount = members.filter((m) => m.is_active).length
   const suspendedCount = members.filter((m) => !m.is_active).length
+
+  // Extract unique departments and batches
+  const departments = useMemo(() => {
+    const depts = new Set<string>()
+    members.forEach((m) => {
+      if (m.department && m.department.trim()) {
+        depts.add(m.department.trim().toUpperCase())
+      }
+    })
+    return Array.from(depts).sort()
+  }, [members])
+
+  const batches = useMemo(() => {
+    const bSet = new Set<string>()
+    members.forEach((m) => {
+      if (m.batch && m.batch.trim()) {
+        bSet.add(m.batch.trim())
+      }
+    })
+    return Array.from(bSet).sort((a, b) => b.localeCompare(a))
+  }, [members])
 
   // Assign role mutation
   const assignRoleMutation = useMutation({
@@ -87,21 +111,38 @@ export default function AdminMembersPage() {
   })
 
   // Filtering
-  const filteredMembers = members.filter((m) => {
-    const q = search.toLowerCase()
-    const matchSearch =
-      (m.full_name || '').toLowerCase().includes(q) ||
-      (m.email || '').toLowerCase().includes(q) ||
-      (m.roll_number || '').toLowerCase().includes(q) ||
-      (m.batch || '').toLowerCase().includes(q) ||
-      (m.department || '').toLowerCase().includes(q)
+  const filteredMembers = useMemo(() => {
+    return members.filter((m) => {
+      const q = search.toLowerCase()
+      const matchSearch =
+        !q ||
+        (m.full_name || '').toLowerCase().includes(q) ||
+        (m.email || '').toLowerCase().includes(q) ||
+        (m.roll_number || '').toLowerCase().includes(q) ||
+        (m.batch || '').toLowerCase().includes(q) ||
+        (m.department || '').toLowerCase().includes(q)
 
-    if (!matchSearch) return false
+      if (!matchSearch) return false
 
-    if (statusFilter === 'active') return m.is_active
-    if (statusFilter === 'suspended') return !m.is_active
-    return true
-  })
+      if (statusFilter === 'active' && !m.is_active) return false
+      if (statusFilter === 'suspended' && m.is_active) return false
+      if (roleFilter !== 'all' && m.role !== roleFilter) return false
+      if (departmentFilter !== 'all' && (m.department || '').trim().toUpperCase() !== departmentFilter) return false
+      if (batchFilter !== 'all' && (m.batch || '').trim() !== batchFilter) return false
+
+      return true
+    })
+  }, [members, search, statusFilter, roleFilter, departmentFilter, batchFilter])
+
+  const isFiltered = search !== '' || statusFilter !== 'all' || roleFilter !== 'all' || departmentFilter !== 'all' || batchFilter !== 'all'
+
+  const resetFilters = () => {
+    setSearch('')
+    setStatusFilter('all')
+    setRoleFilter('all')
+    setDepartmentFilter('all')
+    setBatchFilter('all')
+  }
 
   const handleRoleChange = (userId: string, newRole: any) => {
     if (!confirm(`Are you sure you want to change this member's role to ${newRole}?`)) return
@@ -154,58 +195,131 @@ export default function AdminMembersPage() {
       </div>
 
       {/* Filter and Search Bar */}
-      <div className="flex flex-col md:flex-row gap-4 items-stretch md:items-center justify-between bg-black/20 p-4 border border-white/5 rounded-2xl">
-        <div className="relative flex-1 max-w-md">
-          <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-neutral-500" />
-          <Input
-            type="text"
-            placeholder="Search by name, email, roll no, or batch..."
-            value={search}
-            onChange={(e) => setSearch(e.target.value)}
-            className="pl-9 h-10 border-white/5 bg-white/[0.02] text-sm text-neutral-200 placeholder-neutral-500 rounded-xl focus-visible:ring-cyan-500/50"
-          />
+      <div className="space-y-3 bg-black/20 p-4 border border-white/5 rounded-2xl">
+        <div className="flex flex-col md:flex-row gap-3 items-stretch md:items-center justify-between">
+          <div className="relative flex-1">
+            <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-neutral-500" />
+            <Input
+              type="text"
+              placeholder="Search by name, email, roll no, batch, or department..."
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              className="pl-9 h-10 border-white/5 bg-white/[0.02] text-sm text-neutral-200 placeholder-neutral-500 rounded-xl focus-visible:ring-cyan-500/50"
+            />
+          </div>
+
+          {/* Status filter tabs */}
+          <div className="flex items-center gap-1.5 p-1 bg-neutral-900/60 border border-white/5 rounded-xl shrink-0">
+            <button
+              type="button"
+              onClick={() => setStatusFilter('all')}
+              className={cn(
+                "px-3 py-1.5 rounded-lg text-xs font-semibold transition-all",
+                statusFilter === 'all'
+                  ? "bg-white/10 text-white shadow-sm"
+                  : "text-neutral-400 hover:text-white"
+              )}
+            >
+              All ({members.length})
+            </button>
+            <button
+              type="button"
+              onClick={() => setStatusFilter('active')}
+              className={cn(
+                "px-3 py-1.5 rounded-lg text-xs font-semibold transition-all flex items-center gap-1.5",
+                statusFilter === 'active'
+                  ? "bg-green-500/15 text-green-400 shadow-sm"
+                  : "text-neutral-400 hover:text-green-400"
+              )}
+            >
+              <span className="h-1.5 w-1.5 rounded-full bg-green-500" />
+              Active ({activeCount})
+            </button>
+            <button
+              type="button"
+              onClick={() => setStatusFilter('suspended')}
+              className={cn(
+                "px-3 py-1.5 rounded-lg text-xs font-semibold transition-all flex items-center gap-1.5",
+                statusFilter === 'suspended'
+                  ? "bg-red-500/15 text-red-400 shadow-sm"
+                  : "text-neutral-400 hover:text-red-400"
+              )}
+            >
+              <span className="h-1.5 w-1.5 rounded-full bg-red-500" />
+              Suspended ({suspendedCount})
+            </button>
+          </div>
         </div>
 
-        {/* Status filter tabs */}
-        <div className="flex items-center gap-1.5 p-1 bg-neutral-900/60 border border-white/5 rounded-xl shrink-0">
-          <button
-            type="button"
-            onClick={() => setStatusFilter('all')}
-            className={cn(
-              "px-3 py-1.5 rounded-lg text-xs font-semibold transition-all",
-              statusFilter === 'all'
-                ? "bg-white/10 text-white shadow-sm"
-                : "text-neutral-400 hover:text-white"
-            )}
-          >
-            All ({members.length})
-          </button>
-          <button
-            type="button"
-            onClick={() => setStatusFilter('active')}
-            className={cn(
-              "px-3 py-1.5 rounded-lg text-xs font-semibold transition-all flex items-center gap-1.5",
-              statusFilter === 'active'
-                ? "bg-green-500/15 text-green-400 shadow-sm"
-                : "text-neutral-400 hover:text-green-400"
-            )}
-          >
-            <span className="h-1.5 w-1.5 rounded-full bg-green-500" />
-            Active ({activeCount})
-          </button>
-          <button
-            type="button"
-            onClick={() => setStatusFilter('suspended')}
-            className={cn(
-              "px-3 py-1.5 rounded-lg text-xs font-semibold transition-all flex items-center gap-1.5",
-              statusFilter === 'suspended'
-                ? "bg-red-500/15 text-red-400 shadow-sm"
-                : "text-neutral-400 hover:text-red-400"
-            )}
-          >
-            <span className="h-1.5 w-1.5 rounded-full bg-red-500" />
-            Suspended ({suspendedCount})
-          </button>
+        {/* Multi-Filter Dropdowns Row */}
+        <div className="flex flex-wrap items-center gap-2.5 pt-2 border-t border-white/5">
+          <div className="flex items-center gap-1.5 text-xs text-neutral-400 font-medium">
+            <Filter className="h-3.5 w-3.5 text-cyan-400" />
+            <span>Filters:</span>
+          </div>
+
+          {/* Role Filter */}
+          <div className="w-40">
+            <Select value={roleFilter} onValueChange={(val) => setRoleFilter(val || 'all')}>
+              <SelectTrigger className="h-8 rounded-xl text-xs bg-white/[0.02] border-white/5 text-neutral-200">
+                <SelectValue placeholder="All Roles" />
+              </SelectTrigger>
+              <SelectContent className="rounded-xl border-white/10 bg-neutral-900">
+                <SelectItem value="all" className="text-xs">All Roles</SelectItem>
+                <SelectItem value="admin" className="text-xs">Admin</SelectItem>
+                <SelectItem value="board_member" className="text-xs">Board Member</SelectItem>
+                <SelectItem value="committee_member" className="text-xs">Committee Member</SelectItem>
+                <SelectItem value="member" className="text-xs">Member</SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
+
+          {/* Department Filter */}
+          <div className="w-44">
+            <Select value={departmentFilter} onValueChange={(val) => setDepartmentFilter(val || 'all')}>
+              <SelectTrigger className="h-8 rounded-xl text-xs bg-white/[0.02] border-white/5 text-neutral-200">
+                <SelectValue placeholder="All Departments" />
+              </SelectTrigger>
+              <SelectContent className="rounded-xl border-white/10 bg-neutral-900 max-h-56">
+                <SelectItem value="all" className="text-xs">All Departments</SelectItem>
+                {departments.map((dept) => (
+                  <SelectItem key={dept} value={dept} className="text-xs">
+                    Dept: {dept}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+
+          {/* Batch Filter */}
+          <div className="w-36">
+            <Select value={batchFilter} onValueChange={(val) => setBatchFilter(val || 'all')}>
+              <SelectTrigger className="h-8 rounded-xl text-xs bg-white/[0.02] border-white/5 text-neutral-200">
+                <SelectValue placeholder="All Batches" />
+              </SelectTrigger>
+              <SelectContent className="rounded-xl border-white/10 bg-neutral-900 max-h-56">
+                <SelectItem value="all" className="text-xs">All Batches</SelectItem>
+                {batches.map((batch) => (
+                  <SelectItem key={batch} value={batch} className="text-xs">
+                    Batch {batch}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+
+          {/* Reset Filters button */}
+          {isFiltered && (
+            <Button
+              size="sm"
+              variant="ghost"
+              onClick={resetFilters}
+              className="h-8 px-2.5 text-xs text-rose-400 hover:text-rose-300 hover:bg-rose-500/10 rounded-xl gap-1 ml-auto"
+            >
+              <RotateCcw className="h-3.5 w-3.5" />
+              Reset Filters
+            </Button>
+          )}
         </div>
       </div>
 

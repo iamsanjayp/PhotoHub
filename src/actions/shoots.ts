@@ -5,6 +5,7 @@ import { createAdminClient } from '@/lib/supabase/admin'
 import { getCurrentProfile } from './auth'
 import { revalidatePath } from 'next/cache'
 import { isAdminOrBoard, isClubCoreMember, canAccessCamera, ROLE_LABELS } from '@/lib/constants/roles'
+import { parseSeriesInfo } from '@/lib/series'
 
 // Helper: Assert authenticated user
 async function assertAuth() {
@@ -43,6 +44,9 @@ export async function submitShootIdea(input: {
   description: string
   category?: string
   reference_links?: string
+  is_series?: boolean
+  series_title?: string
+  episodes_count?: string | number
 }) {
   try {
     const profile = await assertAuth()
@@ -52,11 +56,18 @@ export async function submitShootIdea(input: {
       throw new Error('Title and Description are required.')
     }
 
+    let finalDescription = input.description.trim()
+    if (input.is_series) {
+      const sTitle = input.series_title?.trim() || input.title.trim()
+      const epCount = input.episodes_count ? `${input.episodes_count} Episodes` : 'Multi Episodes'
+      finalDescription = `[Series: ${sTitle} | Episodes: ${epCount}]\n\n${finalDescription}`
+    }
+
     const { data, error } = await supabase
       .from('shoot_ideas')
       .insert({
         title: input.title.trim(),
-        description: input.description.trim(),
+        description: finalDescription,
         category: input.category?.trim() || 'creative',
         reference_links: input.reference_links?.trim() || null,
         status: 'pending',
@@ -198,6 +209,55 @@ export async function reviewShootIdea(
   }
 }
 
+// 3b. Delete shoot idea (Creator or Admin/Board Member)
+export async function deleteShootIdea(ideaId: string) {
+  try {
+    const profile = await assertAuth()
+    const adminClient = await createAdminClient()
+
+    // Fetch idea to check permissions
+    const { data: idea, error: fetchErr } = await adminClient
+      .from('shoot_ideas')
+      .select('id, created_by')
+      .eq('id', ideaId)
+      .single()
+
+    if (fetchErr || !idea) throw new Error('Idea not found')
+
+    const isAuthorized = idea.created_by === profile.id || isAdminOrBoard(profile.role)
+    if (!isAuthorized) {
+      throw new Error('Unauthorized. Only the author or an admin can delete this idea.')
+    }
+
+    // Unlink any ph_shoots referencing this idea
+    await adminClient
+      .from('ph_shoots')
+      .update({ idea_id: null })
+      .eq('idea_id', ideaId)
+
+    // Remove notifications referencing this idea
+    await adminClient
+      .from('notifications')
+      .delete()
+      .eq('source_type', 'shoot_idea')
+      .eq('source_id', ideaId)
+
+    // Delete idea
+    const { error } = await adminClient
+      .from('shoot_ideas')
+      .delete()
+      .eq('id', ideaId)
+
+    if (error) throw error
+
+    revalidatePath('/ideas')
+    return { success: true }
+  } catch (error: any) {
+    console.error('Error in deleteShootIdea:', error)
+    return { error: error.message || 'Failed to delete shoot idea' }
+  }
+}
+
 // ============================================================
 // PH SHOOTS (Management for core members & crew)
 // ============================================================
@@ -265,6 +325,9 @@ export async function createPhShoot(input: {
   location?: string
   shoot_date?: string
   post_date?: string
+  is_series?: boolean
+  series_title?: string
+  episode_number?: string | number
 }) {
   try {
     const admin = await assertAdminOrBoard()
@@ -272,11 +335,18 @@ export async function createPhShoot(input: {
 
     if (!input.title) throw new Error('Shoot title is required.')
 
+    let finalDescription = input.description?.trim() || ''
+    if (input.is_series) {
+      const sTitle = input.series_title?.trim() || input.title.trim()
+      const epNum = input.episode_number ? `${input.episode_number}` : '1'
+      finalDescription = `[Series: ${sTitle} | Ep: ${epNum}]\n\n${finalDescription}`.trim()
+    }
+
     const { data, error } = await adminClient
       .from('ph_shoots')
       .insert({
         title: input.title.trim(),
-        description: input.description?.trim() || null,
+        description: finalDescription || null,
         location: input.location?.trim() || null,
         shoot_date: input.shoot_date || null,
         post_date: input.post_date || null,
@@ -306,16 +376,37 @@ export async function updatePhShoot(
     shoot_date?: string | null
     post_date?: string | null
     status?: 'planning' | 'scheduled' | 'shooting' | 'editing' | 'completed' | 'cancelled'
+    is_series?: boolean
+    series_title?: string
+    episode_number?: string | number
   }
 ) {
   try {
     await assertAdminOrBoard()
     const adminClient = await createAdminClient()
 
+    let updatePayload: any = { ...input }
+    delete updatePayload.is_series
+    delete updatePayload.series_title
+    delete updatePayload.episode_number
+
+    if (input.is_series !== undefined) {
+      let rawDesc = input.description !== undefined ? input.description : ''
+      const parsed = parseSeriesInfo(rawDesc)
+      const cleanDesc = parsed.cleanDescription || rawDesc
+      if (input.is_series) {
+        const sTitle = input.series_title?.trim() || parsed.seriesTitle || input.title || 'Series'
+        const epNum = input.episode_number ? `${input.episode_number}` : (parsed.episodeNumber || '1')
+        updatePayload.description = `[Series: ${sTitle} | Ep: ${epNum}]\n\n${cleanDesc}`.trim()
+      } else {
+        updatePayload.description = cleanDesc || null
+      }
+    }
+
     const { data, error } = await adminClient
       .from('ph_shoots')
       .update({
-        ...input,
+        ...updatePayload,
         updated_at: new Date().toISOString(),
       })
       .eq('id', shootId)
@@ -349,7 +440,7 @@ export async function assignShootCrew(input: {
       throw new Error('Shoot ID, Member, and Role are required.')
     }
 
-    // Fetch the target user's profile to verify permissions
+    // Fetch the target user's profile
     const { data: targetUser, error: userErr } = await adminClient
       .from('profiles')
       .select('id, full_name, role')
@@ -358,16 +449,8 @@ export async function assignShootCrew(input: {
 
     if (userErr || !targetUser) throw new Error('Member not found')
 
-    // Camera role restriction check
-    const normalizedRole = input.role.toLowerCase()
-    const isCameraRole = /camera|cinematograph|dop|videograph/i.test(normalizedRole)
-
-    if (isCameraRole && !canAccessCamera(targetUser.role)) {
-      const userRoleLabel = ROLE_LABELS[targetUser.role as keyof typeof ROLE_LABELS] || targetUser.role
-      throw new Error(
-        `Camera & cinematography roles can ONLY be assigned to Board Members and Committee Members. ${targetUser.full_name || 'This user'} is currently a '${userRoleLabel}'.`
-      )
-    }
+    // Note: Any member can be assigned crew, camera, editor, director, etc.
+    // Restriction removed per club specifications.
 
     // Fetch shoot title for notification
     const { data: shoot } = await adminClient
@@ -541,6 +624,40 @@ export async function completePhShoot(shootId: string, pointsPerMember: number =
   } catch (error: any) {
     console.error('Error in completePhShoot:', error)
     return { error: error.message || 'Failed to complete shoot' }
+  }
+}
+
+// 12. Quick toggle shoot status (Active <-> Completed)
+export async function toggleShootStatus(shootId: string, targetStatus?: 'completed' | 'planning') {
+  try {
+    await assertAdminOrBoard()
+    const adminClient = await createAdminClient()
+
+    let nextStatus = targetStatus
+    if (!nextStatus) {
+      const { data: current } = await adminClient
+        .from('ph_shoots')
+        .select('status')
+        .eq('id', shootId)
+        .single()
+      nextStatus = current?.status === 'completed' ? 'planning' : 'completed'
+    }
+
+    const { error } = await adminClient
+      .from('ph_shoots')
+      .update({
+        status: nextStatus,
+        updated_at: new Date().toISOString(),
+      })
+      .eq('id', shootId)
+
+    if (error) throw error
+
+    revalidatePath('/shoots')
+    return { success: true, nextStatus }
+  } catch (error: any) {
+    console.error('Error in toggleShootStatus:', error)
+    return { error: error.message || 'Failed to toggle shoot status' }
   }
 }
 

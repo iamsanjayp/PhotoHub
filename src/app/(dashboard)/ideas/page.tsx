@@ -7,7 +7,9 @@ import {
   submitShootIdea,
   getShootIdeas,
   reviewShootIdea,
+  deleteShootIdea,
 } from '@/actions/shoots'
+import { parseSeriesInfo } from '@/lib/series'
 import { isAdminOrBoard, ROLE_LABELS } from '@/lib/constants/roles'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
@@ -44,6 +46,8 @@ import {
   Award,
   ChevronRight,
   MessageSquare,
+  Trash2,
+  Layers,
 } from 'lucide-react'
 import { format } from 'date-fns'
 import { toast } from 'sonner'
@@ -70,12 +74,16 @@ export default function IdeasPage() {
   const [reviewAction, setReviewAction] = useState<'approved' | 'rejected'>('approved')
   const [reviewNotes, setReviewNotes] = useState('')
   const [awardPoints, setAwardPoints] = useState('20')
+  const [deletingIdea, setDeletingIdea] = useState<any | null>(null)
 
   // Submit form state
   const [title, setTitle] = useState('')
   const [category, setCategory] = useState('Short Film')
   const [description, setDescription] = useState('')
   const [referenceLinks, setReferenceLinks] = useState('')
+  const [isSeries, setIsSeries] = useState(false)
+  const [seriesTitle, setSeriesTitle] = useState('')
+  const [episodesCount, setEpisodesCount] = useState('')
 
   const isLeader = profile ? isAdminOrBoard(profile.role) : false
 
@@ -98,6 +106,9 @@ export default function IdeasPage() {
         description,
         category,
         reference_links: referenceLinks,
+        is_series: isSeries,
+        series_title: seriesTitle,
+        episodes_count: episodesCount,
       })
       if (res.error) throw new Error(res.error)
       return res.data
@@ -108,10 +119,29 @@ export default function IdeasPage() {
       setTitle('')
       setDescription('')
       setReferenceLinks('')
+      setIsSeries(false)
+      setSeriesTitle('')
+      setEpisodesCount('')
       queryClient.invalidateQueries({ queryKey: ['shoot-ideas'] })
     },
     onError: (err: any) => {
       toast.error(err.message || 'Failed to submit idea')
+    },
+  })
+
+  // Delete Mutation
+  const deleteIdeaMutation = useMutation({
+    mutationFn: async (ideaId: string) => {
+      const res = await deleteShootIdea(ideaId)
+      if (res.error) throw new Error(res.error)
+    },
+    onSuccess: () => {
+      toast.success('Idea deleted successfully')
+      setDeletingIdea(null)
+      queryClient.invalidateQueries({ queryKey: ['shoot-ideas'] })
+    },
+    onError: (err: any) => {
+      toast.error(err.message || 'Failed to delete idea')
     },
   })
 
@@ -229,6 +259,8 @@ export default function IdeasPage() {
             const isRejected = idea.status === 'rejected'
             const isPending = idea.status === 'pending'
             const isOwner = idea.created_by === profile?.id
+            const canDelete = isOwner || isLeader
+            const seriesInfo = parseSeriesInfo(idea.description)
 
             return (
               <Card
@@ -237,25 +269,47 @@ export default function IdeasPage() {
               >
                 <CardHeader className="pb-3 space-y-3">
                   <div className="flex items-center justify-between gap-2 flex-wrap">
-                    <Badge variant="secondary" className="bg-neutral-100 dark:bg-white/5 text-neutral-700 dark:text-neutral-300 border border-neutral-200 dark:border-white/5 text-[11px] font-medium">
-                      {idea.category || 'Creative'}
-                    </Badge>
+                    <div className="flex items-center gap-1.5 flex-wrap">
+                      <Badge variant="secondary" className="bg-neutral-100 dark:bg-white/5 text-neutral-700 dark:text-neutral-300 border border-neutral-200 dark:border-white/5 text-[11px] font-medium">
+                        {idea.category || 'Creative'}
+                      </Badge>
 
-                    {isApproved && (
-                      <Badge className="bg-emerald-500/10 text-emerald-400 border-emerald-500/20 text-[11px] font-bold gap-1">
-                        <CheckCircle2 className="h-3 w-3" /> Approved & Greenlit
-                      </Badge>
-                    )}
-                    {isPending && (
-                      <Badge className="bg-amber-500/10 text-amber-400 border-amber-500/20 text-[11px] font-bold gap-1">
-                        <Clock className="h-3 w-3" /> Under Review
-                      </Badge>
-                    )}
-                    {isRejected && (
-                      <Badge className="bg-rose-500/10 text-rose-400 border-rose-500/20 text-[11px] font-bold gap-1">
-                        <XCircle className="h-3 w-3" /> Declined
-                      </Badge>
-                    )}
+                      {seriesInfo.isSeries && (
+                        <Badge className="bg-amber-500/10 text-amber-400 border border-amber-500/20 text-[10px] font-bold gap-1">
+                          <Layers className="h-3 w-3" />
+                          {seriesInfo.seriesTitle || 'Series'}{seriesInfo.episodeNumber ? ` • ${seriesInfo.episodeNumber}` : ''}
+                        </Badge>
+                      )}
+                    </div>
+
+                    <div className="flex items-center gap-1.5">
+                      {isApproved && (
+                        <Badge className="bg-emerald-500/10 text-emerald-400 border-emerald-500/20 text-[11px] font-bold gap-1">
+                          <CheckCircle2 className="h-3 w-3" /> Approved
+                        </Badge>
+                      )}
+                      {isPending && (
+                        <Badge className="bg-amber-500/10 text-amber-400 border-amber-500/20 text-[11px] font-bold gap-1">
+                          <Clock className="h-3 w-3" /> Under Review
+                        </Badge>
+                      )}
+                      {isRejected && (
+                        <Badge className="bg-rose-500/10 text-rose-400 border-rose-500/20 text-[11px] font-bold gap-1">
+                          <XCircle className="h-3 w-3" /> Declined
+                        </Badge>
+                      )}
+                      {canDelete && (
+                        <Button
+                          size="sm"
+                          variant="ghost"
+                          onClick={() => setDeletingIdea(idea)}
+                          className="h-7 w-7 p-0 text-neutral-400 hover:text-red-400 rounded-lg"
+                          title="Delete Idea"
+                        >
+                          <Trash2 className="h-3.5 w-3.5" />
+                        </Button>
+                      )}
+                    </div>
                   </div>
 
                   <div>
@@ -270,7 +324,7 @@ export default function IdeasPage() {
 
                 <CardContent className="space-y-4 pt-0">
                   <p className="text-xs text-neutral-600 dark:text-neutral-300 line-clamp-4 leading-relaxed whitespace-pre-line">
-                    {idea.description}
+                    {seriesInfo.cleanDescription || idea.description}
                   </p>
 
                   {/* Reference Links */}
@@ -390,6 +444,43 @@ export default function IdeasPage() {
                   ))}
                 </SelectContent>
               </Select>
+            </div>
+
+            <div className="p-3 rounded-2xl bg-amber-500/5 border border-amber-500/15 space-y-3">
+              <label className="flex items-center gap-2 cursor-pointer">
+                <input
+                  type="checkbox"
+                  checked={isSeries}
+                  onChange={(e) => setIsSeries(e.target.checked)}
+                  className="rounded border-amber-500 text-amber-500 focus:ring-amber-500"
+                />
+                <span className="text-xs font-bold text-amber-400 flex items-center gap-1.5">
+                  <Layers className="h-3.5 w-3.5" /> This idea is for a Series or Multi-episode project
+                </span>
+              </label>
+
+              {isSeries && (
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-1">
+                  <div className="space-y-1">
+                    <Label className="text-[11px] font-semibold text-neutral-300">Series Title / Franchise</Label>
+                    <Input
+                      placeholder="e.g. Behind The Lens, Campus Chronicles"
+                      value={seriesTitle}
+                      onChange={(e) => setSeriesTitle(e.target.value)}
+                      className="rounded-xl text-xs h-8"
+                    />
+                  </div>
+                  <div className="space-y-1">
+                    <Label className="text-[11px] font-semibold text-neutral-300">Planned Episodes Count</Label>
+                    <Input
+                      placeholder="e.g. 4 Episodes, Ongoing"
+                      value={episodesCount}
+                      onChange={(e) => setEpisodesCount(e.target.value)}
+                      className="rounded-xl text-xs h-8"
+                    />
+                  </div>
+                </div>
+              )}
             </div>
 
             <div className="space-y-1.5">
@@ -540,6 +631,33 @@ export default function IdeasPage() {
               }`}
             >
               {reviewMutation.isPending ? 'Saving...' : 'Confirm Decision'}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Delete Idea Confirmation Dialog */}
+      <Dialog open={!!deletingIdea} onOpenChange={(open) => !open && setDeletingIdea(null)}>
+        <DialogContent className="max-w-md rounded-3xl bg-card border border-neutral-200 dark:border-white/10">
+          <DialogHeader>
+            <DialogTitle className="text-lg font-bold text-white flex items-center gap-2">
+              <Trash2 className="h-5 w-5 text-rose-400" />
+              Delete Shoot Idea
+            </DialogTitle>
+            <DialogDescription className="text-xs text-neutral-400">
+              Are you sure you want to delete "{deletingIdea?.title}"? This action cannot be undone.
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter className="gap-2 sm:gap-0 mt-4">
+            <Button variant="ghost" onClick={() => setDeletingIdea(null)} className="rounded-xl text-xs">
+              Cancel
+            </Button>
+            <Button
+              onClick={() => deletingIdea && deleteIdeaMutation.mutate(deletingIdea.id)}
+              disabled={deleteIdeaMutation.isPending}
+              className="bg-rose-500 hover:bg-rose-400 text-white font-bold rounded-xl text-xs"
+            >
+              {deleteIdeaMutation.isPending ? 'Deleting...' : 'Delete Idea'}
             </Button>
           </DialogFooter>
         </DialogContent>

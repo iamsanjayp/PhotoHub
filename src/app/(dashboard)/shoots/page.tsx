@@ -11,7 +11,10 @@ import {
   removeShootCrew,
   respondShootAssignment,
   completePhShoot,
+  deletePhShoot,
+  toggleShootStatus,
 } from '@/actions/shoots'
+import { parseSeriesInfo } from '@/lib/series'
 import { getMembers } from '@/actions/members'
 import { isClubCoreMember, isAdminOrBoard, canAccessCamera, ROLE_LABELS } from '@/lib/constants/roles'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
@@ -51,24 +54,20 @@ import {
   Trash2,
   Award,
   AlertTriangle,
-  Send,
-  ShieldAlert,
   SlidersHorizontal,
+  Layers,
+  Send,
 } from 'lucide-react'
 import { format } from 'date-fns'
 import { toast } from 'sonner'
 
 const COMMON_ROLES = [
+  'Crew',
+  'Camera',
+  'Editor',
   'Director',
-  'Camera Operator',
-  'Cinematographer (DOP)',
-  'Lead Editor',
-  'Assistant Editor',
-  'Scriptwriter',
-  'Sound Engineer',
-  'Lighting Specialist',
-  'Colorist',
-  'Production Assistant',
+  'Lead Photographer',
+  'Lighting / Sound',
   'Actor / Talent',
 ]
 
@@ -77,11 +76,12 @@ export default function ShootsPage() {
   const queryClient = useQueryClient()
 
   // State
-  const [filterTab, setFilterTab] = useState<'all' | 'planning' | 'scheduled' | 'completed' | 'my'>('all')
+  const [filterTab, setFilterTab] = useState<'all' | 'active' | 'completed' | 'my'>('all')
   const [isCreateOpen, setIsCreateOpen] = useState(false)
   const [assigningShoot, setAssigningShoot] = useState<any | null>(null)
   const [editingShoot, setEditingShoot] = useState<any | null>(null)
   const [completingShoot, setCompletingShoot] = useState<any | null>(null)
+  const [deletingShoot, setDeletingShoot] = useState<any | null>(null)
 
   // Create shoot state
   const [title, setTitle] = useState('')
@@ -89,10 +89,13 @@ export default function ShootsPage() {
   const [location, setLocation] = useState('')
   const [shootDate, setShootDate] = useState('')
   const [postDate, setPostDate] = useState('')
+  const [isSeries, setIsSeries] = useState(false)
+  const [seriesTitle, setSeriesTitle] = useState('')
+  const [episodeNumber, setEpisodeNumber] = useState('')
 
   // Crew assign state
   const [selectedUserId, setSelectedUserId] = useState('')
-  const [crewRole, setCrewRole] = useState('Director')
+  const [crewRole, setCrewRole] = useState('Crew')
   const [crewNotes, setCrewNotes] = useState('')
   const [memberSearch, setMemberSearch] = useState('')
 
@@ -132,6 +135,9 @@ export default function ShootsPage() {
         location,
         shoot_date: shootDate ? new Date(shootDate).toISOString() : undefined,
         post_date: postDate ? new Date(postDate).toISOString() : undefined,
+        is_series: isSeries,
+        series_title: seriesTitle,
+        episode_number: episodeNumber,
       })
       if (res.error) throw new Error(res.error)
       return res.data
@@ -144,6 +150,9 @@ export default function ShootsPage() {
       setLocation('')
       setShootDate('')
       setPostDate('')
+      setIsSeries(false)
+      setSeriesTitle('')
+      setEpisodeNumber('')
       queryClient.invalidateQueries({ queryKey: ['ph-shoots'] })
     },
     onError: (err: any) => {
@@ -157,11 +166,14 @@ export default function ShootsPage() {
       if (!editingShoot) return
       const res = await updatePhShoot(editingShoot.id, {
         title: editingShoot.title,
-        description: editingShoot.description,
+        description: editingShoot.clean_desc !== undefined ? editingShoot.clean_desc : editingShoot.description,
         location: editingShoot.location,
         shoot_date: editingShoot.shoot_date ? new Date(editingShoot.shoot_date).toISOString() : null,
         post_date: editingShoot.post_date ? new Date(editingShoot.post_date).toISOString() : null,
         status: editingShoot.status,
+        is_series: editingShoot.is_series,
+        series_title: editingShoot.series_title,
+        episode_number: editingShoot.episode_number,
       })
       if (res.error) throw new Error(res.error)
     },
@@ -249,11 +261,42 @@ export default function ShootsPage() {
     },
   })
 
+  // Quick Toggle Status Mutation
+  const toggleStatusMutation = useMutation({
+    mutationFn: async ({ shootId, targetStatus }: { shootId: string; targetStatus?: 'completed' | 'planning' }) => {
+      const res = await toggleShootStatus(shootId, targetStatus)
+      if (res.error) throw new Error(res.error)
+      return res
+    },
+    onSuccess: (res) => {
+      toast.success(`Shoot marked as ${res?.nextStatus === 'completed' ? 'Completed' : 'Active'}!`)
+      queryClient.invalidateQueries({ queryKey: ['ph-shoots'] })
+    },
+    onError: (err: any) => {
+      toast.error(err.message || 'Failed to toggle status')
+    },
+  })
+
+  // Delete Shoot Mutation
+  const deleteShootMutation = useMutation({
+    mutationFn: async (shootId: string) => {
+      const res = await deletePhShoot(shootId)
+      if (res.error) throw new Error(res.error)
+    },
+    onSuccess: () => {
+      toast.success('Shoot project deleted successfully')
+      setDeletingShoot(null)
+      queryClient.invalidateQueries({ queryKey: ['ph-shoots'] })
+    },
+    onError: (err: any) => {
+      toast.error(err.message || 'Failed to delete shoot')
+    },
+  })
+
   // Filter shoots
   const filteredShoots = useMemo(() => {
     return shoots.filter((s: any) => {
-      if (filterTab === 'planning') return s.status === 'planning'
-      if (filterTab === 'scheduled') return ['scheduled', 'shooting', 'editing'].includes(s.status)
+      if (filterTab === 'active') return s.status !== 'completed' && s.status !== 'cancelled'
       if (filterTab === 'completed') return s.status === 'completed'
       if (filterTab === 'my') return s.assignments?.some((a: any) => a.user_id === profile?.id)
       return true
@@ -271,12 +314,6 @@ export default function ShootsPage() {
         m.email?.toLowerCase().includes(q)
     )
   }, [allMembers, memberSearch])
-
-  // Check if chosen member is eligible for selected role
-  const isCameraRole = /camera|cinematograph|dop|videograph/i.test(crewRole)
-  const selectedMemberObj = allMembers.find((m: any) => m.id === selectedUserId)
-  const isSelectedMemberCameraEligible = selectedMemberObj ? canAccessCamera(selectedMemberObj.role) : true
-  const cameraError = isCameraRole && selectedMemberObj && !isSelectedMemberCameraEligible
 
   return (
     <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 space-y-8">
@@ -314,11 +351,8 @@ export default function ShootsPage() {
             <TabsTrigger value="all" className="font-semibold text-xs sm:text-sm">
               All Shoots ({shoots.length})
             </TabsTrigger>
-            <TabsTrigger value="planning" className="font-semibold text-xs sm:text-sm">
-              In Planning ({shoots.filter((s: any) => s.status === 'planning').length})
-            </TabsTrigger>
-            <TabsTrigger value="scheduled" className="font-semibold text-xs sm:text-sm">
-              In Production ({shoots.filter((s: any) => ['scheduled', 'shooting', 'editing'].includes(s.status)).length})
+            <TabsTrigger value="active" className="font-semibold text-xs sm:text-sm">
+              Active Shoots ({shoots.filter((s: any) => s.status !== 'completed' && s.status !== 'cancelled').length})
             </TabsTrigger>
             <TabsTrigger value="completed" className="font-semibold text-xs sm:text-sm">
               Completed ({shoots.filter((s: any) => s.status === 'completed').length})
@@ -360,6 +394,7 @@ export default function ShootsPage() {
             const isCompleted = shoot.status === 'completed'
             const assignments = shoot.assignments || []
             const userAssignment = assignments.find((a: any) => a.user_id === profile?.id)
+            const seriesInfo = parseSeriesInfo(shoot.description)
 
             return (
               <Card
@@ -368,19 +403,25 @@ export default function ShootsPage() {
               >
                 <CardHeader className="pb-3 space-y-3">
                   <div className="flex items-center justify-between gap-2 flex-wrap">
-                    <div className="flex items-center gap-2">
+                    <div className="flex items-center gap-1.5 flex-wrap">
                       <Badge
                         variant="secondary"
                         className={
                           isCompleted
                             ? 'bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 uppercase text-[11px] font-bold'
-                            : shoot.status === 'planning'
-                            ? 'bg-amber-500/10 text-amber-400 border border-amber-500/20 uppercase text-[11px] font-bold'
                             : 'bg-cyan-500/10 text-cyan-400 border border-cyan-500/20 uppercase text-[11px] font-bold'
                         }
                       >
-                        {shoot.status}
+                        {isCompleted ? 'Completed' : 'Active'}
                       </Badge>
+
+                      {seriesInfo.isSeries && (
+                        <Badge className="bg-cyan-500/10 text-cyan-400 border border-cyan-500/20 text-[10px] font-bold gap-1">
+                          <Layers className="h-3 w-3" />
+                          {seriesInfo.seriesTitle || 'Series'}{seriesInfo.episodeNumber ? ` • Ep ${seriesInfo.episodeNumber}` : ''}
+                        </Badge>
+                      )}
+
                       {shoot.idea && (
                         <Badge variant="outline" className="bg-purple-500/10 text-purple-400 border-purple-500/20 text-[10px] gap-1">
                           <Sparkles className="h-3 w-3" /> From Idea: {shoot.idea.category}
@@ -388,22 +429,55 @@ export default function ShootsPage() {
                       )}
                     </div>
 
-                    {isLeader && !isCompleted && (
+                    {isLeader && (
                       <div className="flex items-center gap-1.5">
+                        {isCompleted ? (
+                          <Button
+                            size="sm"
+                            variant="ghost"
+                            onClick={() => toggleStatusMutation.mutate({ shootId: shoot.id, targetStatus: 'planning' })}
+                            disabled={toggleStatusMutation.isPending}
+                            className="h-8 px-2 text-xs rounded-xl text-neutral-400 hover:text-white"
+                          >
+                            Reopen Active
+                          </Button>
+                        ) : (
+                          <Button
+                            size="sm"
+                            onClick={() => setCompletingShoot(shoot)}
+                            className="h-8 px-2.5 text-xs rounded-xl bg-emerald-500 hover:bg-emerald-400 text-neutral-950 font-bold gap-1"
+                          >
+                            <CheckCircle2 className="h-3.5 w-3.5" /> Mark Completed
+                          </Button>
+                        )}
+
                         <Button
                           size="sm"
                           variant="ghost"
-                          onClick={() => setEditingShoot({ ...shoot })}
+                          onClick={() => {
+                            const parsed = parseSeriesInfo(shoot.description)
+                            setEditingShoot({
+                              ...shoot,
+                              is_series: parsed.isSeries,
+                              series_title: parsed.seriesTitle || '',
+                              episode_number: parsed.episodeNumber || '',
+                              clean_desc: parsed.cleanDescription || '',
+                            })
+                          }}
                           className="h-8 px-2 text-xs rounded-xl text-neutral-400 hover:text-white"
+                          title="Edit Shoot"
                         >
                           <SlidersHorizontal className="h-3.5 w-3.5 mr-1" /> Edit
                         </Button>
+
                         <Button
                           size="sm"
-                          onClick={() => setCompletingShoot(shoot)}
-                          className="h-8 px-2.5 text-xs rounded-xl bg-emerald-500 hover:bg-emerald-400 text-neutral-950 font-bold gap-1"
+                          variant="ghost"
+                          onClick={() => setDeletingShoot(shoot)}
+                          className="h-8 w-8 p-0 text-neutral-400 hover:text-red-400 rounded-xl"
+                          title="Delete Shoot"
                         >
-                          <Award className="h-3.5 w-3.5" /> Complete
+                          <Trash2 className="h-3.5 w-3.5" />
                         </Button>
                       </div>
                     )}
@@ -413,9 +487,9 @@ export default function ShootsPage() {
                     <CardTitle className="text-xl font-bold text-neutral-900 dark:text-white group-hover:text-cyan-400 transition-colors">
                       {shoot.title}
                     </CardTitle>
-                    {shoot.description && (
+                    {(seriesInfo.cleanDescription || shoot.description) && (
                       <p className="text-xs text-neutral-500 dark:text-neutral-400 mt-1 line-clamp-2">
-                        {shoot.description}
+                        {seriesInfo.cleanDescription || shoot.description}
                       </p>
                     )}
                   </div>
@@ -608,6 +682,43 @@ export default function ShootsPage() {
               />
             </div>
 
+            <div className="p-3 rounded-2xl bg-cyan-500/5 border border-cyan-500/15 space-y-3">
+              <label className="flex items-center gap-2 cursor-pointer">
+                <input
+                  type="checkbox"
+                  checked={isSeries}
+                  onChange={(e) => setIsSeries(e.target.checked)}
+                  className="rounded border-cyan-500 text-cyan-500 focus:ring-cyan-500"
+                />
+                <span className="text-xs font-bold text-cyan-400 flex items-center gap-1.5">
+                  <Layers className="h-3.5 w-3.5" /> This shoot is part of a Series or Multi-episode project
+                </span>
+              </label>
+
+              {isSeries && (
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-1">
+                  <div className="space-y-1">
+                    <Label className="text-[11px] font-semibold text-neutral-300">Series Name</Label>
+                    <Input
+                      placeholder="e.g. Behind The Lens, Freshers 2026"
+                      value={seriesTitle}
+                      onChange={(e) => setSeriesTitle(e.target.value)}
+                      className="rounded-xl text-xs h-8"
+                    />
+                  </div>
+                  <div className="space-y-1">
+                    <Label className="text-[11px] font-semibold text-neutral-300">Episode Number</Label>
+                    <Input
+                      placeholder="e.g. 1, 2, Special"
+                      value={episodeNumber}
+                      onChange={(e) => setEpisodeNumber(e.target.value)}
+                      className="rounded-xl text-xs h-8"
+                    />
+                  </div>
+                </div>
+              )}
+            </div>
+
             <div className="space-y-1.5">
               <Label htmlFor="s-desc" className="text-xs font-semibold">
                 Description / Production Brief
@@ -754,11 +865,48 @@ export default function ShootsPage() {
                 />
               </div>
 
+              <div className="p-3 rounded-2xl bg-cyan-500/5 border border-cyan-500/15 space-y-3">
+                <label className="flex items-center gap-2 cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={editingShoot.is_series || false}
+                    onChange={(e) => setEditingShoot({ ...editingShoot, is_series: e.target.checked })}
+                    className="rounded border-cyan-500 text-cyan-500 focus:ring-cyan-500"
+                  />
+                  <span className="text-xs font-bold text-cyan-400 flex items-center gap-1.5">
+                    <Layers className="h-3.5 w-3.5" /> This shoot is part of a Series or Multi-episode project
+                  </span>
+                </label>
+
+                {editingShoot.is_series && (
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-1">
+                    <div className="space-y-1">
+                      <Label className="text-[11px] font-semibold text-neutral-300">Series Name</Label>
+                      <Input
+                        placeholder="e.g. Behind The Lens, Freshers 2026"
+                        value={editingShoot.series_title || ''}
+                        onChange={(e) => setEditingShoot({ ...editingShoot, series_title: e.target.value })}
+                        className="rounded-xl text-xs h-8"
+                      />
+                    </div>
+                    <div className="space-y-1">
+                      <Label className="text-[11px] font-semibold text-neutral-300">Episode Number</Label>
+                      <Input
+                        placeholder="e.g. 1, 2, Special"
+                        value={editingShoot.episode_number || ''}
+                        onChange={(e) => setEditingShoot({ ...editingShoot, episode_number: e.target.value })}
+                        className="rounded-xl text-xs h-8"
+                      />
+                    </div>
+                  </div>
+                )}
+              </div>
+
               <div className="space-y-1.5">
                 <Label className="text-xs font-semibold">Description</Label>
                 <Textarea
-                  value={editingShoot.description || ''}
-                  onChange={(e) => setEditingShoot({ ...editingShoot, description: e.target.value })}
+                  value={editingShoot.clean_desc !== undefined ? editingShoot.clean_desc : (editingShoot.description || '')}
+                  onChange={(e) => setEditingShoot({ ...editingShoot, clean_desc: e.target.value, description: e.target.value })}
                   rows={3}
                   className="rounded-xl text-xs resize-none"
                 />
@@ -812,22 +960,9 @@ export default function ShootsPage() {
               </Select>
             </div>
 
-            {/* Camera Role Notice */}
-            {isCameraRole && (
-              <div className="p-3 rounded-2xl bg-amber-500/10 border border-amber-500/20 text-xs text-amber-500 flex items-start gap-2">
-                <Camera className="h-4 w-4 shrink-0 mt-0.5" />
-                <div>
-                  <p className="font-bold">Camera Access Restricted Role</p>
-                  <p className="text-[11px] text-amber-600/90 dark:text-amber-400/90">
-                    Camera & Cinematography roles can only be assigned to Board Members and Committee Members.
-                  </p>
-                </div>
-              </div>
-            )}
-
             {/* Member Search & Selection */}
             <div className="space-y-1.5">
-              <Label className="text-xs font-semibold">Select Member *</Label>
+              <Label className="text-xs font-semibold">Select Member (Any member can be assigned Crew, Camera, or Editor) *</Label>
               <Input
                 placeholder="Search member by name or roll number..."
                 value={memberSearch}
@@ -838,19 +973,15 @@ export default function ShootsPage() {
               <div className="max-h-48 overflow-y-auto space-y-1.5 border border-neutral-200 dark:border-white/5 rounded-2xl p-2">
                 {filteredMembers.map((member: any) => {
                   const isSelected = selectedUserId === member.id
-                  const isCameraEligible = canAccessCamera(member.role)
-                  const isDisabled = isCameraRole && !isCameraEligible
 
                   return (
                     <div
                       key={member.id}
-                      onClick={() => !isDisabled && setSelectedUserId(member.id)}
-                      className={`flex items-center justify-between p-2 rounded-xl text-xs transition-colors ${
-                        isDisabled
-                          ? 'opacity-40 cursor-not-allowed bg-neutral-100 dark:bg-white/[0.01]'
-                          : isSelected
-                          ? 'bg-cyan-500/10 border border-cyan-500/30 text-cyan-400 cursor-pointer'
-                          : 'hover:bg-neutral-100 dark:hover:bg-white/5 cursor-pointer border border-transparent'
+                      onClick={() => setSelectedUserId(member.id)}
+                      className={`flex items-center justify-between p-2 rounded-xl text-xs transition-colors cursor-pointer ${
+                        isSelected
+                          ? 'bg-cyan-500/10 border border-cyan-500/30 text-cyan-400'
+                          : 'hover:bg-neutral-100 dark:hover:bg-white/5 border border-transparent'
                       }`}
                     >
                       <div className="flex items-center gap-2 truncate">
@@ -871,9 +1002,7 @@ export default function ShootsPage() {
                         </div>
                       </div>
 
-                      {isDisabled ? (
-                        <span className="text-[10px] text-amber-500 font-medium">No camera access</span>
-                      ) : isSelected ? (
+                      {isSelected ? (
                         <CheckCircle2 className="h-4 w-4 text-cyan-400" />
                       ) : null}
                     </div>
@@ -881,12 +1010,6 @@ export default function ShootsPage() {
                 })}
               </div>
             </div>
-
-            {cameraError && (
-              <p className="text-xs text-red-500 font-semibold flex items-center gap-1">
-                <AlertTriangle className="h-3.5 w-3.5" /> Please select a Board or Committee member for camera roles.
-              </p>
-            )}
 
             <div className="space-y-1.5">
               <Label className="text-xs font-semibold">Notes / Instructions (Optional)</Label>
@@ -905,7 +1028,7 @@ export default function ShootsPage() {
             </Button>
             <Button
               onClick={() => assignCrewMutation.mutate()}
-              disabled={assignCrewMutation.isPending || !selectedUserId || !crewRole || !!cameraError}
+              disabled={assignCrewMutation.isPending || !selectedUserId || !crewRole}
               className="bg-cyan-500 hover:bg-cyan-400 text-neutral-950 font-bold rounded-xl text-xs"
             >
               {assignCrewMutation.isPending ? 'Assigning...' : 'Confirm Assignment'}
@@ -952,6 +1075,33 @@ export default function ShootsPage() {
               className="bg-emerald-500 hover:bg-emerald-400 text-neutral-950 font-bold rounded-xl text-xs"
             >
               {completeShootMutation.isPending ? 'Completing...' : 'Confirm & Award Points'}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Delete Shoot Confirmation Dialog */}
+      <Dialog open={!!deletingShoot} onOpenChange={(open) => !open && setDeletingShoot(null)}>
+        <DialogContent className="max-w-md rounded-3xl bg-card border border-neutral-200 dark:border-white/10">
+          <DialogHeader>
+            <DialogTitle className="text-lg font-bold text-white flex items-center gap-2">
+              <Trash2 className="h-5 w-5 text-rose-400" />
+              Delete PH Shoot
+            </DialogTitle>
+            <DialogDescription className="text-xs text-neutral-400">
+              Are you sure you want to delete "{deletingShoot?.title}"? All crew assignments and records will be permanently removed.
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter className="gap-2 sm:gap-0 mt-4">
+            <Button variant="ghost" onClick={() => setDeletingShoot(null)} className="rounded-xl text-xs">
+              Cancel
+            </Button>
+            <Button
+              onClick={() => deletingShoot && deleteShootMutation.mutate(deletingShoot.id)}
+              disabled={deleteShootMutation.isPending}
+              className="bg-rose-500 hover:bg-rose-400 text-white font-bold rounded-xl text-xs"
+            >
+              {deleteShootMutation.isPending ? 'Deleting...' : 'Delete Shoot'}
             </Button>
           </DialogFooter>
         </DialogContent>

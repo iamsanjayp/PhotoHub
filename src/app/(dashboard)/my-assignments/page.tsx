@@ -8,7 +8,9 @@ import {
   uploadApexMedia,
   deleteApexMedia,
   updateApexStatus,
+  assignTeamMember,
 } from '@/actions/apex'
+import { getMembers } from '@/actions/members'
 import { addMissedAttendanceRecord } from '@/actions/missed-attendance'
 import { useAuth } from '@/providers/auth-provider'
 import { Card, CardContent, CardHeader } from '@/components/ui/card'
@@ -23,6 +25,7 @@ import {
   DialogHeader,
   DialogTitle,
   DialogDescription,
+  DialogFooter,
 } from '@/components/ui/dialog'
 import { MediaUpload } from '@/components/ui/media-upload'
 import { format } from 'date-fns'
@@ -41,9 +44,10 @@ import {
   ShieldCheck,
   Calendar,
   Sparkles,
-  Layers,
   Video,
-  GraduationCap
+  GraduationCap,
+  Plus,
+  UserPlus,
 } from 'lucide-react'
 import { toast } from 'sonner'
 import { cn } from '@/lib/utils'
@@ -54,6 +58,12 @@ export default function MyAssignmentsPage() {
   const { profile } = useAuth()
   const queryClient = useQueryClient()
   const [activeTab, setActiveTab] = useState<'active' | 'completed'>('active')
+
+  // Add crew member state
+  const [addCrewShoot, setAddCrewShoot] = useState<any | null>(null)
+  const [newCrewUserId, setNewCrewUserId] = useState('')
+  const [newCrewRole, setNewCrewRole] = useState('photographer')
+  const [newCrewSearch, setNewCrewSearch] = useState('')
 
   // Claim missed attendance state
   const [claimDialogOpen, setClaimDialogOpen] = useState(false)
@@ -117,6 +127,47 @@ export default function MyAssignmentsPage() {
   })
 
   const assignments = result || []
+
+  // Query club members for assignment
+  const { data: allMembers = [] } = useQuery({
+    queryKey: ['club-members-directory-short'],
+    queryFn: async () => {
+      const res = await getMembers()
+      return res.data || []
+    },
+    enabled: !!profile,
+  })
+
+  // Assign crew member mutation
+  const assignCrewMutation = useMutation({
+    mutationFn: async () => {
+      if (!addCrewShoot || !newCrewUserId) return
+      const res = await assignTeamMember(addCrewShoot.id, newCrewUserId, newCrewRole, null)
+      if (res.error) throw new Error(res.error)
+      return res
+    },
+    onSuccess: () => {
+      toast.success('Crew member added to shoot!')
+      setAddCrewShoot(null)
+      setNewCrewUserId('')
+      setNewCrewSearch('')
+      queryClient.invalidateQueries({ queryKey: ['my-assignments'] })
+    },
+    onError: (err: any) => {
+      toast.error(err.message || 'Failed to assign crew member')
+    },
+  })
+
+  const filteredNewCrewMembers = allMembers.filter((m: any) => {
+    if (!newCrewSearch.trim()) return true
+    const q = newCrewSearch.toLowerCase()
+    return (
+      (m.full_name || '').toLowerCase().includes(q) ||
+      (m.roll_number || '').toLowerCase().includes(q) ||
+      (m.email || '').toLowerCase().includes(q) ||
+      (m.department || '').toLowerCase().includes(q)
+    )
+  })
 
   // Split into active/upcoming vs completed assignments
   const activeAssignments = assignments.filter((a: any) => {
@@ -514,12 +565,29 @@ export default function MyAssignmentsPage() {
                       )}
 
                       {/* Fellow Crew Team */}
-                      {req.apex_assignments && req.apex_assignments.length > 0 && (
-                        <div className="border border-white/5 bg-white/[0.015] p-3 rounded-xl space-y-2 mt-3">
+                      <div className="border border-white/5 bg-white/[0.015] p-3 rounded-xl space-y-2 mt-3">
+                        <div className="flex items-center justify-between">
                           <div className="flex items-center gap-1.5 text-neutral-300 font-bold text-xs">
                             <Users className="h-3.5 w-3.5 text-cyan-400" />
-                            <span>Assigned Crew ({req.apex_assignments.length})</span>
+                            <span>Assigned Crew ({(req.apex_assignments || []).length})</span>
                           </div>
+                          {!isShootConcluded && (
+                            <Button
+                              size="sm"
+                              variant="ghost"
+                              onClick={() => {
+                                setAddCrewShoot(req)
+                                setNewCrewUserId('')
+                                setNewCrewRole('photographer')
+                                setNewCrewSearch('')
+                              }}
+                              className="h-6 text-[11px] rounded-lg text-cyan-400 hover:text-cyan-300 hover:bg-cyan-500/10 font-semibold px-2 gap-1"
+                            >
+                              <Plus className="h-3 w-3" /> Add Crew Member
+                            </Button>
+                          )}
+                        </div>
+                        {req.apex_assignments && req.apex_assignments.length > 0 ? (
                           <div className="flex flex-wrap gap-1.5 pt-1">
                             {req.apex_assignments.map((other: any) => {
                               const isMe = other.user_id === profile.id
@@ -540,8 +608,10 @@ export default function MyAssignmentsPage() {
                               )
                             })}
                           </div>
-                        </div>
-                      )}
+                        ) : (
+                          <p className="text-[11px] text-neutral-500 italic">No additional crew assigned yet.</p>
+                        )}
+                      </div>
 
                       {req.notes && (
                         <div className="pt-2 text-xs text-neutral-400 bg-white/[0.01] p-3 rounded-xl border border-white/5 whitespace-pre-wrap">
@@ -790,6 +860,102 @@ export default function MyAssignmentsPage() {
               </Button>
             </div>
           </form>
+        </DialogContent>
+      </Dialog>
+
+      {/* Add Crew Member Dialog */}
+      <Dialog open={!!addCrewShoot} onOpenChange={(open) => !open && setAddCrewShoot(null)}>
+        <DialogContent className="max-w-md rounded-3xl bg-neutral-950 border border-white/10">
+          <DialogHeader>
+            <DialogTitle className="text-lg font-bold text-white flex items-center gap-2">
+              <UserPlus className="h-5 w-5 text-cyan-400" />
+              Add Crew Member to Shoot
+            </DialogTitle>
+            <DialogDescription className="text-xs text-neutral-400">
+              Assign a teammate to cover "{addCrewShoot?.event_name}".
+            </DialogDescription>
+          </DialogHeader>
+
+          <div className="space-y-4 py-2">
+            <div className="space-y-1.5">
+              <Label className="text-xs font-semibold text-neutral-300">Coverage Role *</Label>
+              <select
+                value={newCrewRole}
+                onChange={(e) => setNewCrewRole(e.target.value)}
+                className="w-full border border-white/10 bg-neutral-900 text-white rounded-xl px-3 py-2 text-xs focus:border-cyan-500/50 h-10 focus:outline-none"
+              >
+                <option value="photographer">Photographer</option>
+                <option value="videographer">Videographer</option>
+                <option value="editor">Editor</option>
+                <option value="production_assistant">Production Crew</option>
+              </select>
+            </div>
+
+            <div className="space-y-1.5">
+              <Label className="text-xs font-semibold text-neutral-300">Select Member *</Label>
+              <Input
+                placeholder="Search member name, dept, or roll number..."
+                value={newCrewSearch}
+                onChange={(e) => setNewCrewSearch(e.target.value)}
+                className="rounded-xl text-xs mb-2"
+              />
+
+              <div className="max-h-48 overflow-y-auto space-y-1.5 border border-white/5 rounded-xl p-2 bg-neutral-900/50">
+                {filteredNewCrewMembers.map((member: any) => {
+                  const isSelected = newCrewUserId === member.id
+                  const isAlreadyAssigned = (addCrewShoot?.apex_assignments || []).some(
+                    (a: any) => a.user_id === member.id
+                  )
+
+                  return (
+                    <div
+                      key={member.id}
+                      onClick={() => !isAlreadyAssigned && setNewCrewUserId(member.id)}
+                      className={cn(
+                        'flex items-center justify-between p-2 rounded-xl text-xs transition-colors cursor-pointer',
+                        isAlreadyAssigned
+                          ? 'opacity-40 cursor-not-allowed bg-neutral-900'
+                          : isSelected
+                          ? 'bg-cyan-500/10 border border-cyan-500/30 text-cyan-400'
+                          : 'hover:bg-white/5 border border-transparent'
+                      )}
+                    >
+                      <div className="flex items-center gap-2 truncate">
+                        <div className="h-6 w-6 rounded-full bg-cyan-500/20 text-cyan-300 font-bold flex items-center justify-center text-[10px] shrink-0">
+                          {member.full_name?.charAt(0) || 'U'}
+                        </div>
+                        <div className="truncate">
+                          <p className="font-semibold text-white truncate">{member.full_name}</p>
+                          <p className="text-[10px] text-neutral-400">
+                            {member.department ? `${member.department} • ` : ''}{member.roll_number || member.email}
+                          </p>
+                        </div>
+                      </div>
+
+                      {isAlreadyAssigned ? (
+                        <span className="text-[10px] text-neutral-500">Already on crew</span>
+                      ) : isSelected ? (
+                        <CheckCircle className="h-4 w-4 text-cyan-400" />
+                      ) : null}
+                    </div>
+                  )
+                })}
+              </div>
+            </div>
+          </div>
+
+          <DialogFooter className="gap-2 sm:gap-0 mt-2">
+            <Button variant="ghost" onClick={() => setAddCrewShoot(null)} className="rounded-xl text-xs">
+              Cancel
+            </Button>
+            <Button
+              onClick={() => assignCrewMutation.mutate()}
+              disabled={assignCrewMutation.isPending || !newCrewUserId}
+              className="bg-cyan-500 hover:bg-cyan-400 text-black font-bold rounded-xl text-xs"
+            >
+              {assignCrewMutation.isPending ? 'Assigning...' : 'Confirm Assignment'}
+            </Button>
+          </DialogFooter>
         </DialogContent>
       </Dialog>
     </div>

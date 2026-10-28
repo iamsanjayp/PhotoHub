@@ -3,6 +3,7 @@ import { getCurrentProfile } from '@/actions/auth'
 import Sidebar from '@/components/layout/sidebar'
 import Header from '@/components/layout/header'
 import MobileNav from '@/components/layout/mobile-nav'
+import { CompleteProfilePrompt } from '@/components/profile/complete-profile-prompt'
 
 export const dynamic = 'force-dynamic'
 
@@ -36,6 +37,9 @@ export default async function DashboardLayout({
           {children}
         </main>
       </div>
+
+      {/* Incomplete Profile Prompt Modal */}
+      <CompleteProfilePrompt />
 
       {/* Mobile Bottom Navigation */}
       <MobileNav profile={profile} />

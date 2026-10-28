@@ -6,7 +6,9 @@ import {
   getEventAnalytics,
   getEventFeedbackAndMissedAttendance,
   getEventOtpConfig,
+  getEventVolunteers,
 } from '@/actions/events'
+import { getMembers } from '@/actions/members'
 import { getSubmissions } from '@/actions/submissions'
 import AdminEventDashboard from '@/components/events/admin-event-dashboard'
 
@@ -36,6 +38,8 @@ export default async function AdminEventDetailPage({ params }: AdminEventDetailP
     analyticsRes,
     feedbackAndMissedRes,
     otpConfigRes,
+    volunteersRes,
+    membersRes,
   ] = await Promise.all([
     getEventById(eventId),
     getEventRegistrations(eventId),
@@ -43,6 +47,8 @@ export default async function AdminEventDetailPage({ params }: AdminEventDetailP
     getEventAnalytics(eventId),
     getEventFeedbackAndMissedAttendance(eventId),
     getEventOtpConfig(eventId),
+    getEventVolunteers(eventId),
+    getMembers(),
   ])
 
   if (eventRes.error || !eventRes.data) {
@@ -58,6 +64,8 @@ export default async function AdminEventDetailPage({ params }: AdminEventDetailP
       initialFeedbacks={feedbackAndMissedRes.data?.feedbacks || []}
       initialMissedAttendance={feedbackAndMissedRes.data?.missedAttendance || []}
       initialOtpConfig={otpConfigRes.data || { active: false, otp: '' }}
+      initialVolunteers={volunteersRes.data || []}
+      allMembers={membersRes.data || []}
     />
   )
 }

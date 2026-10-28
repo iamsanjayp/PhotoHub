@@ -39,6 +39,8 @@ export async function signOut() {
   return redirect('/login')
 }
 
+import { parseStudentEmail } from '@/lib/student-email'
+
 export async function getCurrentProfile() {
   try {
     const supabase = await createClient()
@@ -53,6 +55,8 @@ export async function getCurrentProfile() {
       .eq('id', user.id)
       .single()
 
+    const parsed = parseStudentEmail(user.email)
+
     if (!profile || profileError) {
       console.log('getCurrentProfile -> fallback to admin client for profile check due to:', profileError?.message || 'null profile')
       const adminClient = await createAdminClient()
@@ -66,13 +70,15 @@ export async function getCurrentProfile() {
         profile = adminProfile
       } else {
         const email = user.email || ''
-        const fullName = user.user_metadata?.full_name || user.user_metadata?.name || email.split('@')[0]
+        const fullName = user.user_metadata?.full_name || user.user_metadata?.name || parsed?.name || email.split('@')[0]
         const { data: newProfile, error: insertError } = await adminClient
           .from('profiles')
           .insert({
             id: user.id,
             email: email,
             full_name: fullName,
+            department: parsed?.department || null,
+            batch: parsed?.batch || null,
             role: email === 'photohub@bitsathy.ac.in' ? 'admin' : 'member',
             is_active: true,
             created_at: new Date().toISOString(),
@@ -87,7 +93,32 @@ export async function getCurrentProfile() {
       }
     }
 
-    console.log('getCurrentProfile -> resolved profile:', profile?.email, profile?.role, profile?.is_active)
+    // Auto-capture batch and department from student email if currently missing on existing profile
+    if (profile && parsed) {
+      const updates: Record<string, any> = {}
+      if (!profile.department && parsed.department) {
+        updates.department = parsed.department
+        profile.department = parsed.department
+      }
+      if (!profile.batch && parsed.batch) {
+        updates.batch = parsed.batch
+        profile.batch = parsed.batch
+      }
+      if (!profile.full_name && parsed.name) {
+        updates.full_name = parsed.name
+        profile.full_name = parsed.name
+      }
+
+      if (Object.keys(updates).length > 0) {
+        const adminClient = await createAdminClient()
+        await adminClient
+          .from('profiles')
+          .update({ ...updates, updated_at: new Date().toISOString() })
+          .eq('id', user.id)
+      }
+    }
+
+    console.log('getCurrentProfile -> resolved profile:', profile?.email, profile?.role, profile?.is_active, profile?.department, profile?.batch)
     return profile
   } catch (error) {
     console.error('Error in getCurrentProfile:', error)

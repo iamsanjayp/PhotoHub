@@ -850,81 +850,12 @@ export default function ApexAdminDetail({
               <div className="xl:col-span-2 space-y-6">
                 {/* Allocated Equipment Section */}
                 <div className="space-y-3">
-                  <div className="flex items-center justify-between">
-                    <div className="flex items-center gap-2">
-                      <Camera className="h-4 w-4 text-cyan-400" />
-                      <h3 className="text-md font-bold text-white px-1">
-                        Allocated Shoot Cameras & Gear ({allocatedGearItems.length})
-                      </h3>
-                    </div>
-                    <Button
-                      type="button"
-                      size="sm"
-                      variant="outline"
-                      onClick={() => setShowAllocateDialog(!showAllocateDialog)}
-                      className="border-cyan-500/30 bg-cyan-500/5 text-cyan-400 hover:bg-cyan-500/10 hover:text-cyan-300 font-bold rounded-xl h-8 px-3 text-xs gap-1.5"
-                    >
-                      <Plus className="h-3.5 w-3.5" />
-                      {showAllocateDialog ? 'Cancel' : 'Allocate Camera / Gear'}
-                    </Button>
+                  <div className="flex items-center gap-2">
+                    <Camera className="h-4 w-4 text-cyan-400" />
+                    <h3 className="text-md font-bold text-white px-1">
+                      Allocated Shoot Cameras & Gear ({allocatedGearItems.length})
+                    </h3>
                   </div>
-
-                  {/* Inline Allocation Card */}
-                  {showAllocateDialog && (
-                    <Card className="border border-cyan-500/30 bg-cyan-500/5 p-4 rounded-xl">
-                      <form onSubmit={handleAllocateEquipment} className="space-y-3">
-                        <h4 className="text-xs font-bold text-cyan-300 uppercase tracking-wider">
-                          Allocate Additional Camera / Gear
-                        </h4>
-                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                          <div className="space-y-1">
-                            <Label className="text-[10px] font-semibold text-neutral-400">Select Equipment</Label>
-                            <select
-                              value={allocGearId}
-                              onChange={(e) => setAllocGearId(e.target.value)}
-                              className="w-full border border-white/10 bg-neutral-950 text-white rounded-xl px-3 py-2 text-xs focus:border-cyan-500/30 h-10 focus:outline-none"
-                            >
-                              <option value="">Choose camera or gear...</option>
-                              {usableEquipment.map((eq) => (
-                                <option key={eq.id} value={eq.id}>
-                                  {eq.name} ({eq.type}){eq.status === 'assigned' ? ' — [In Use / Reserved]' : ''}
-                                </option>
-                              ))}
-                            </select>
-                          </div>
-                          <div className="space-y-1">
-                            <Label className="text-[10px] font-semibold text-neutral-400">Designated Custodian</Label>
-                            <MemberSearchCombobox
-                              members={members}
-                              selectedMemberId={allocCustodianId}
-                              onSelectMember={(m) => setAllocCustodianId(m ? m.id : '')}
-                              filterOnlyCameraHolders={true}
-                              placeholder="Search camera holder..."
-                            />
-                          </div>
-                        </div>
-                        <div className="flex justify-end gap-2 pt-1">
-                          <Button
-                            type="button"
-                            variant="ghost"
-                            size="sm"
-                            onClick={() => setShowAllocateDialog(false)}
-                            className="text-neutral-400 text-xs h-8"
-                          >
-                            Cancel
-                          </Button>
-                          <Button
-                            type="submit"
-                            disabled={isPending}
-                            size="sm"
-                            className="bg-cyan-500 hover:bg-cyan-400 text-black font-bold rounded-xl text-xs h-8 px-4"
-                          >
-                            {isPending ? 'Allocating...' : 'Confirm Allocation'}
-                          </Button>
-                        </div>
-                      </form>
-                    </Card>
-                  )}
 
                   {allocatedGearItems.length === 0 ? (
                     <Card className="border border-dashed border-white/5 bg-black/20 rounded-xl p-4 text-center text-xs text-neutral-500">

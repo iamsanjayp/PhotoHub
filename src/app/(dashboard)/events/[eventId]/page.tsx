@@ -1,5 +1,5 @@
 import type { Metadata } from 'next'
-import { getEventById, getEventOtpConfig } from '@/actions/events'
+import { getEventById, getEventOtpConfig, getEventVolunteers } from '@/actions/events'
 import { getMySubmission } from '@/actions/submissions'
 import { getCurrentProfile } from '@/actions/auth'
 import RegistrationButton from '@/components/events/registration-button'
@@ -11,7 +11,7 @@ import { Badge } from '@/components/ui/badge'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { format } from 'date-fns'
 import Link from 'next/link'
-import { ArrowLeft, Clock, MapPin, Award, Users, ShieldAlert, Sparkles, CheckCircle2, ExternalLink } from 'lucide-react'
+import { ArrowLeft, Clock, MapPin, Award, Users, ShieldAlert, Sparkles, CheckCircle2, ExternalLink, HeartHandshake } from 'lucide-react'
 import { notFound } from 'next/navigation'
 import { cn } from '@/lib/utils'
 import { Button } from '@/components/ui/button'
@@ -31,10 +31,11 @@ export async function generateMetadata({ params }: PageProps): Promise<Metadata>
 
 export default async function EventDetailPage({ params }: PageProps) {
   const { eventId } = await params
-  const [result, profile, otpConfigRes] = await Promise.all([
+  const [result, profile, otpConfigRes, volunteersRes] = await Promise.all([
     getEventById(eventId),
     getCurrentProfile(),
-    getEventOtpConfig(eventId)
+    getEventOtpConfig(eventId),
+    getEventVolunteers(eventId),
   ])
 
   if (result.error || !result.data) {
@@ -42,6 +43,7 @@ export default async function EventDetailPage({ params }: PageProps) {
   }
 
   const event = result.data
+  const volunteers = volunteersRes?.data || []
   const isPast = new Date(event.end_date) < new Date()
   const isAdminOrLeader = profile && ['admin', 'leader'].includes(profile.role)
   const otpConfig = otpConfigRes?.data || { active: false, isCheckedIn: false, hasSubmittedFeedback: false }
@@ -189,6 +191,48 @@ export default async function EventDetailPage({ params }: PageProps) {
                     This event requires a contribution to earn points. Submit your entry via the <span className="font-semibold text-cyan-400">My Submission</span> tab.
                   </div>
                 </div>
+              )}
+
+              {volunteers.length > 0 && (
+                <Card className="border-white/5 bg-black/40 backdrop-blur-xl rounded-2xl overflow-hidden">
+                  <CardHeader className="pb-3">
+                    <div className="flex items-center gap-2">
+                      <HeartHandshake className="h-4 w-4 text-cyan-400" />
+                      <CardTitle className="text-base font-bold text-white">Event Coordinators & Volunteers ({volunteers.length})</CardTitle>
+                    </div>
+                    <CardDescription className="text-xs text-neutral-400">
+                      Team members helping coordinate and execute this event
+                    </CardDescription>
+                  </CardHeader>
+                  <CardContent className="pt-0">
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                      {volunteers.map((vol) => (
+                        <div key={vol.id} className="flex items-center gap-3 p-2.5 rounded-xl bg-white/[0.02] border border-white/5 hover:border-white/10 transition-colors">
+                          <div className="h-10 w-10 rounded-full bg-gradient-to-tr from-cyan-500/20 to-purple-500/20 border border-white/10 flex items-center justify-center font-bold text-xs text-white overflow-hidden shrink-0">
+                            {vol.profiles?.avatar_url ? (
+                              <img src={vol.profiles.avatar_url} alt={vol.profiles.full_name} className="h-full w-full object-cover" />
+                            ) : (
+                              (vol.profiles?.full_name || 'U').charAt(0).toUpperCase()
+                            )}
+                          </div>
+                          <div className="min-w-0 flex-1">
+                            <p className="text-sm font-semibold text-white truncate">{vol.profiles?.full_name || 'Volunteer'}</p>
+                            <div className="flex items-center gap-2 mt-0.5">
+                              <Badge variant="outline" className="text-[10px] py-0 px-1.5 border-cyan-500/30 text-cyan-400 bg-cyan-500/10 font-medium">
+                                {vol.role}
+                              </Badge>
+                              {vol.profiles?.department && (
+                                <span className="text-[11px] text-neutral-400 truncate">
+                                  {vol.profiles.department} {vol.profiles.batch ? `'${vol.profiles.batch.slice(-2)}` : ''}
+                                </span>
+                              )}
+                            </div>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  </CardContent>
+                </Card>
               )}
             </TabsContent>
 

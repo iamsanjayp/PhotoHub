@@ -307,31 +307,36 @@ export async function rejectApexRequest(requestId: string, reason: string) {
 export async function assignTeamMember(requestId: string, userId: string, role: string, equipmentId?: string | null) {
   try {
     const profile = await getCurrentProfile()
-    if (!profile || !isAdminOrBoard(profile.role)) {
+    if (!profile) {
       throw new Error('Unauthorized')
     }
 
     const supabase = await createAdminClient()
 
-    // If equipment is selected, verify camera access permissions
-    if (equipmentId) {
-      const { data: eq } = await supabase
-        .from('equipment')
-        .select('type, name')
-        .eq('id', equipmentId)
-        .single()
+    // Authorization: Admin, Board Member, or an assigned camera holder / crew member on this shoot
+    let isAuthorized = isAdminOrBoard(profile.role)
+    if (!isAuthorized) {
+      const { data: userAssignment } = await supabase
+        .from('apex_assignments')
+        .select('id')
+        .eq('request_id', requestId)
+        .eq('user_id', profile.id)
+        .maybeSingle()
 
-      if (eq?.type === 'camera') {
-        const { data: assignee } = await supabase
-          .from('profiles')
-          .select('role')
-          .eq('id', userId)
-          .single()
+      const { data: eqCustodian } = await supabase
+        .from('equipment_assignments')
+        .select('id')
+        .eq('apex_request_id', requestId)
+        .eq('assigned_to', profile.id)
+        .maybeSingle()
 
-        if (!assignee || !canAccessCamera(assignee.role)) {
-          return { error: 'Camera equipment can only be assigned to Admin, Board Member, or Committee Member.' }
-        }
+      if (userAssignment || eqCustodian) {
+        isAuthorized = true
       }
+    }
+
+    if (!isAuthorized) {
+      throw new Error('Unauthorized. Only Admins, Board Members, or the assigned Camera Holder can add team members.')
     }
 
     // Insert assignment

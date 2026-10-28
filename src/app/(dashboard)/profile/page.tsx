@@ -7,6 +7,7 @@ import { updateProfile } from '@/actions/members'
 import { getUserSubmissions } from '@/actions/submissions'
 import { getPointsLog } from '@/actions/leaderboard'
 import { getUserPosts } from '@/actions/posts'
+import { uploadMedia } from '@/actions/upload'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -18,7 +19,7 @@ import { Badge } from '@/components/ui/badge'
 import { Skeleton } from '@/components/ui/skeleton'
 import PostDialog from '@/components/feed/post-dialog'
 import { toast } from 'sonner'
-import { Loader2, Award, Calendar, FileText, CheckCircle, Settings, User } from 'lucide-react'
+import { Loader2, Award, Calendar, FileText, CheckCircle, Settings, User, Camera } from 'lucide-react'
 import { format } from 'date-fns'
 import { cn, getMediaUrl } from '@/lib/utils'
 
@@ -26,6 +27,7 @@ export default function ProfilePage() {
   const { profile, refreshProfile } = useAuth()
   const queryClient = useQueryClient()
   const [isEditing, setIsEditing] = useState(false)
+  const [isUploadingAvatar, setIsUploadingAvatar] = useState(false)
 
   // Form states
   const [fullName, setFullName] = useState(profile?.full_name || '')
@@ -35,6 +37,38 @@ export default function ProfilePage() {
   const [department, setDepartment] = useState(profile?.department || '')
   const [bio, setBio] = useState(profile?.bio || '')
   const [skills, setSkills] = useState(profile?.skills?.join(', ') || '')
+
+  const handleAvatarFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0]
+    if (!file) return
+
+    try {
+      setIsUploadingAvatar(true)
+      const formData = new FormData()
+      formData.append('file', file)
+
+      const uploadRes = await uploadMedia(formData)
+      if (uploadRes.error || !uploadRes.url) {
+        throw new Error(uploadRes.error || 'Failed to upload photo')
+      }
+
+      const updateRes = await updateProfile({ avatar_url: uploadRes.url })
+      if (updateRes.error) {
+        throw new Error(updateRes.error)
+      }
+
+      toast.success('Profile picture updated successfully!')
+      if (updateRes.data) {
+        await refreshProfile(updateRes.data)
+      } else {
+        await refreshProfile()
+      }
+    } catch (err: any) {
+      toast.error(err.message || 'Failed to update profile picture')
+    } finally {
+      setIsUploadingAvatar(false)
+    }
+  }
 
   // Sync state if profile loads/updates
   useEffect(() => {
@@ -158,12 +192,53 @@ export default function ProfilePage() {
             </div>
 
             <CardContent className="space-y-4 pt-6">
-              <Avatar className="h-24 w-24 mx-auto ring-4 ring-cyan-500/20 ring-offset-4 ring-offset-[#0A0A0A]">
-                <AvatarImage src={profile.avatar_url || undefined} className="object-cover" />
-                <AvatarFallback className="bg-neutral-800 text-white text-2xl font-bold">
-                  {profile.full_name?.substring(0, 2).toUpperCase()}
-                </AvatarFallback>
-              </Avatar>
+              <div className="relative w-24 h-24 mx-auto group">
+                <Avatar className="h-24 w-24 ring-4 ring-cyan-500/20 ring-offset-4 ring-offset-[#0A0A0A] overflow-hidden">
+                  <AvatarImage src={profile.avatar_url || undefined} className="object-cover" />
+                  <AvatarFallback className="bg-neutral-800 text-white text-2xl font-bold">
+                    {profile.full_name?.substring(0, 2).toUpperCase()}
+                  </AvatarFallback>
+                </Avatar>
+
+                {/* Upload Avatar Overlay Button */}
+                <label
+                  htmlFor="profile-avatar-input"
+                  className="absolute inset-0 rounded-full bg-black/60 opacity-0 group-hover:opacity-100 flex flex-col items-center justify-center text-cyan-300 cursor-pointer transition-opacity backdrop-blur-[2px]"
+                  title="Change Profile Picture"
+                >
+                  {isUploadingAvatar ? (
+                    <Loader2 className="h-6 w-6 animate-spin text-cyan-400" />
+                  ) : (
+                    <>
+                      <Camera className="h-6 w-6" />
+                      <span className="text-[9px] font-bold mt-1">Upload</span>
+                    </>
+                  )}
+                </label>
+
+                {/* Hidden File Input */}
+                <input
+                  id="profile-avatar-input"
+                  type="file"
+                  accept="image/*"
+                  disabled={isUploadingAvatar}
+                  onChange={handleAvatarFileChange}
+                  className="hidden"
+                />
+
+                {/* Bottom Right Camera Icon Badge */}
+                <label
+                  htmlFor="profile-avatar-input"
+                  className="absolute bottom-0 right-0 h-7 w-7 rounded-full bg-cyan-500 text-neutral-950 flex items-center justify-center shadow-md cursor-pointer hover:bg-cyan-400 transition-colors border-2 border-black"
+                  title="Change Profile Picture"
+                >
+                  {isUploadingAvatar ? (
+                    <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                  ) : (
+                    <Camera className="h-3.5 w-3.5" />
+                  )}
+                </label>
+              </div>
 
               <div className="space-y-1">
                 <h3 className="text-lg font-bold text-white leading-none">

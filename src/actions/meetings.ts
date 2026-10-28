@@ -84,6 +84,8 @@ export async function getMeetingDetails(meetingId: string) {
   }
 }
 
+import { sendMeetingInviteEmail } from '@/lib/email'
+
 // 3. Create a new meeting (Admin or Board Member)
 export async function createMeeting(input: {
   title: string
@@ -143,6 +145,29 @@ export async function createMeeting(input: {
       }))
 
       await adminClient.from('notifications').insert(notifications)
+
+      // Send automated invite email from photohub@bitsathy.ac.in if invite only is enabled
+      if (meeting.is_invite_only) {
+        try {
+          const { data: invitedProfiles } = await adminClient
+            .from('profiles')
+            .select('email')
+            .in('id', input.invited_user_ids)
+
+          const emails = (invitedProfiles || []).map((p: any) => p.email).filter(Boolean)
+          if (emails.length > 0) {
+            sendMeetingInviteEmail(emails, {
+              id: meeting.id,
+              title: meeting.title,
+              description: meeting.description,
+              scheduled_at: meeting.scheduled_at,
+              venue: meeting.venue,
+            }).catch((err) => console.error('Automated invite email error:', err))
+          }
+        } catch (mailErr) {
+          console.error('Error fetching member emails for invite:', mailErr)
+        }
+      }
     }
 
     revalidatePath('/meetings')
@@ -150,6 +175,118 @@ export async function createMeeting(input: {
   } catch (error: any) {
     console.error('Error in createMeeting:', error)
     return { error: error.message || 'Failed to create meeting' }
+  }
+}
+
+// 3b. Update Meeting Details (Admin or Board Member)
+export async function updateMeeting(
+  meetingId: string,
+  input: {
+    title?: string
+    description?: string
+    scheduled_at?: string
+    venue?: string
+    is_invite_only?: boolean
+    invited_user_ids?: string[]
+  }
+) {
+  try {
+    await assertAdminOrBoard()
+    const adminClient = await createAdminClient()
+
+    // 1. Fetch existing meeting to see existing invites & status
+    const { data: existingMeeting, error: fetchErr } = await adminClient
+      .from('meetings')
+      .select('*, meeting_invites(user_id)')
+      .eq('id', meetingId)
+      .single()
+
+    if (fetchErr || !existingMeeting) throw new Error('Meeting not found')
+
+    const updatePayload: Record<string, any> = {
+      updated_at: new Date().toISOString(),
+    }
+
+    if (input.title !== undefined) updatePayload.title = input.title.trim()
+    if (input.description !== undefined) updatePayload.description = input.description?.trim() || null
+    if (input.scheduled_at !== undefined) updatePayload.scheduled_at = input.scheduled_at
+    if (input.venue !== undefined) updatePayload.venue = input.venue?.trim() || null
+    if (input.is_invite_only !== undefined) updatePayload.is_invite_only = input.is_invite_only
+
+    const { data: updatedMeeting, error: updateErr } = await adminClient
+      .from('meetings')
+      .update(updatePayload)
+      .eq('id', meetingId)
+      .select()
+      .single()
+
+    if (updateErr) throw updateErr
+
+    // Handle invite list update if provided
+    if (input.invited_user_ids !== undefined) {
+      const existingUserIds: string[] = (existingMeeting.meeting_invites || []).map((inv: any) => inv.user_id)
+      const newUserIds = input.invited_user_ids
+
+      // Delete removed invites
+      const toRemove = existingUserIds.filter((id) => !newUserIds.includes(id))
+      if (toRemove.length > 0) {
+        await adminClient
+          .from('meeting_invites')
+          .delete()
+          .eq('meeting_id', meetingId)
+          .in('user_id', toRemove)
+      }
+
+      // Add new invites
+      const toAdd = newUserIds.filter((id) => !existingUserIds.includes(id))
+      if (toAdd.length > 0) {
+        const inviteRows = toAdd.map((uid) => ({
+          meeting_id: meetingId,
+          user_id: uid,
+        }))
+        await adminClient.from('meeting_invites').insert(inviteRows)
+
+        // Notifications for newly invited
+        const notifications = toAdd.map((userId) => ({
+          user_id: userId,
+          title: 'Meeting Invitation',
+          message: `You have been invited to "${updatedMeeting.title}" on ${new Date(updatedMeeting.scheduled_at).toLocaleDateString()}.`,
+          type: 'info' as const,
+          source_type: 'meeting',
+          source_id: meetingId,
+        }))
+        await adminClient.from('notifications').insert(notifications)
+
+        // Send email to newly invited members if invite-only is enabled
+        if (updatedMeeting.is_invite_only) {
+          try {
+            const { data: newlyInvitedProfiles } = await adminClient
+              .from('profiles')
+              .select('email')
+              .in('id', toAdd)
+
+            const emails = (newlyInvitedProfiles || []).map((p: any) => p.email).filter(Boolean)
+            if (emails.length > 0) {
+              sendMeetingInviteEmail(emails, {
+                id: updatedMeeting.id,
+                title: updatedMeeting.title,
+                description: updatedMeeting.description,
+                scheduled_at: updatedMeeting.scheduled_at,
+                venue: updatedMeeting.venue,
+              }).catch((err) => console.error('Automated invite email error on update:', err))
+            }
+          } catch (mailErr) {
+            console.error('Error fetching member emails for update:', mailErr)
+          }
+        }
+      }
+    }
+
+    revalidatePath('/meetings')
+    return { success: true, data: updatedMeeting }
+  } catch (error: any) {
+    console.error('Error in updateMeeting:', error)
+    return { error: error.message || 'Failed to update meeting' }
   }
 }
 

@@ -1118,4 +1118,116 @@ export async function getEventFeedbackAndMissedAttendance(eventId: string) {
   }
 }
 
+// ============================================================
+// EVENT VOLUNTEERS
+// ============================================================
+
+export async function getEventVolunteers(eventId: string) {
+  try {
+    const adminClient = await createAdminClient()
+    const { data, error } = await adminClient
+      .from('event_registrations')
+      .select('id, event_id, user_id, status, attended, registered_at, profiles(id, full_name, email, roll_number, avatar_url, role, department, batch, phone)')
+      .eq('event_id', eventId)
+      .like('status', 'volunteer%')
+      .order('registered_at', { ascending: true })
+
+    if (error) throw error
+
+    const volunteers = (data || []).map((r: any) => {
+      let role = 'Volunteer'
+      if (r.status && r.status.includes(':')) {
+        role = r.status.split(':')[1].trim()
+      }
+      return {
+        id: r.id,
+        event_id: r.event_id,
+        user_id: r.user_id,
+        role,
+        status: r.status,
+        attended: r.attended,
+        registered_at: r.registered_at,
+        profiles: r.profiles,
+      }
+    })
+
+    return { data: volunteers }
+  } catch (error: any) {
+    console.error('Error in getEventVolunteers:', error)
+    return { error: error.message || 'Failed to fetch event volunteers' }
+  }
+}
+
+export async function assignEventVolunteer(eventId: string, userId: string, role?: string, notes?: string) {
+  try {
+    await assertAdminOrLeader()
+    const adminClient = await createAdminClient()
+
+    const volunteerStatus = role && role.trim() ? `volunteer:${role.trim()}` : 'volunteer'
+
+    // Upsert registration as volunteer
+    const { data, error } = await adminClient
+      .from('event_registrations')
+      .upsert(
+        {
+          event_id: eventId,
+          user_id: userId,
+          status: volunteerStatus,
+        },
+        { onConflict: 'event_id,user_id' }
+      )
+      .select('*, profiles(id, full_name, roll_number)')
+      .single()
+
+    if (error) throw error
+
+    // Fetch event title for notification
+    const { data: event } = await adminClient
+      .from('events')
+      .select('title')
+      .eq('id', eventId)
+      .single()
+
+    // Send notification
+    await adminClient.from('notifications').insert({
+      user_id: userId,
+      title: 'Event Volunteer Assignment 🎉',
+      message: `You have been assigned as a volunteer (${role?.trim() || 'Volunteer Team'}) for the event "${event?.title || 'Event'}".`,
+      type: 'assignment',
+      source_type: 'event',
+      source_id: eventId,
+    })
+
+    revalidatePath(`/admin/events/${eventId}`)
+    revalidatePath(`/events/${eventId}`)
+    return { success: true, data }
+  } catch (error: any) {
+    console.error('Error in assignEventVolunteer:', error)
+    return { error: error.message || 'Failed to assign event volunteer' }
+  }
+}
+
+export async function removeEventVolunteer(registrationId: string, eventId: string) {
+  try {
+    await assertAdminOrLeader()
+    const adminClient = await createAdminClient()
+
+    // Update status to 'registered'
+    const { error } = await adminClient
+      .from('event_registrations')
+      .update({ status: 'registered' })
+      .eq('id', registrationId)
+
+    if (error) throw error
+
+    revalidatePath(`/admin/events/${eventId}`)
+    revalidatePath(`/events/${eventId}`)
+    return { success: true }
+  } catch (error: any) {
+    console.error('Error in removeEventVolunteer:', error)
+    return { error: error.message || 'Failed to remove volunteer' }
+  }
+}
+
+
 

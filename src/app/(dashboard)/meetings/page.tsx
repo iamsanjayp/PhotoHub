@@ -7,6 +7,7 @@ import {
   getMeetings,
   getMeetingDetails,
   createMeeting,
+  updateMeeting,
   updateMeetingMoM,
   saveMeetingAttendance,
   deleteMeeting,
@@ -47,6 +48,9 @@ import {
   ShieldAlert,
   Trash2,
   Save,
+  Pencil,
+  Eye,
+  Info,
 } from 'lucide-react'
 import { format } from 'date-fns'
 import { toast } from 'sonner'
@@ -58,7 +62,9 @@ export default function MeetingsPage() {
   // State
   const [filterTab, setFilterTab] = useState<'upcoming' | 'completed' | 'all'>('upcoming')
   const [isScheduleOpen, setIsScheduleOpen] = useState(false)
+  const [isEditOpen, setIsEditOpen] = useState(false)
   const [selectedMeetingId, setSelectedMeetingId] = useState<string | null>(null)
+  const [viewMoreMeeting, setViewMoreMeeting] = useState<any | null>(null)
   const [detailsTab, setDetailsTab] = useState<'mom' | 'attendance'>('mom')
 
   // Create form state
@@ -69,6 +75,16 @@ export default function MeetingsPage() {
   const [isInviteOnly, setIsInviteOnly] = useState(false)
   const [invitedUserIds, setInvitedUserIds] = useState<string[]>([])
   const [memberSearchQuery, setMemberSearchQuery] = useState('')
+
+  // Edit form state
+  const [editMeetingId, setEditMeetingId] = useState<string | null>(null)
+  const [editTitle, setEditTitle] = useState('')
+  const [editDescription, setEditDescription] = useState('')
+  const [editScheduledAt, setEditScheduledAt] = useState('')
+  const [editVenue, setEditVenue] = useState('')
+  const [editIsInviteOnly, setEditIsInviteOnly] = useState(false)
+  const [editInvitedUserIds, setEditInvitedUserIds] = useState<string[]>([])
+  const [editMemberSearchQuery, setEditMemberSearchQuery] = useState('')
 
   // MoM edit state
   const [momText, setMomText] = useState('')
@@ -135,6 +151,27 @@ export default function MeetingsPage() {
     setAttendanceMap(initialAtt)
   }
 
+  // Open edit dialog
+  const handleOpenEdit = (m: any) => {
+    setEditMeetingId(m.id)
+    setEditTitle(m.title || '')
+    setEditDescription(m.description || '')
+    if (m.scheduled_at) {
+      const d = new Date(m.scheduled_at)
+      const pad = (n: number) => n.toString().padStart(2, '0')
+      const localIso = `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`
+      setEditScheduledAt(localIso)
+    } else {
+      setEditScheduledAt('')
+    }
+    setEditVenue(m.venue || '')
+    setEditIsInviteOnly(!!m.is_invite_only)
+    const invIds = (m.meeting_invites || m.invites || []).map((inv: any) => inv.user_id).filter(Boolean)
+    setEditInvitedUserIds(invIds)
+    setEditMemberSearchQuery('')
+    setIsEditOpen(true)
+  }
+
   // Also sync when activeMeeting query completes
   useEffect(() => {
     if (activeMeeting) {
@@ -169,7 +206,7 @@ export default function MeetingsPage() {
     })
   }, [meetings, filterTab, now])
 
-  // Filter members in invite picker
+  // Filter members in invite picker (Create)
   const filteredInviteMembers = useMemo(() => {
     if (!memberSearchQuery.trim()) return allMembers
     const q = memberSearchQuery.toLowerCase()
@@ -180,6 +217,18 @@ export default function MeetingsPage() {
         m.email?.toLowerCase().includes(q)
     )
   }, [allMembers, memberSearchQuery])
+
+  // Filter members in invite picker (Edit)
+  const filteredEditInviteMembers = useMemo(() => {
+    if (!editMemberSearchQuery.trim()) return allMembers
+    const q = editMemberSearchQuery.toLowerCase()
+    return allMembers.filter(
+      (m: any) =>
+        m.full_name?.toLowerCase().includes(q) ||
+        m.roll_number?.toLowerCase().includes(q) ||
+        m.email?.toLowerCase().includes(q)
+    )
+  }, [allMembers, editMemberSearchQuery])
 
   // Create Meeting Mutation
   const createMeetingMutation = useMutation({
@@ -196,7 +245,7 @@ export default function MeetingsPage() {
       return res.data
     },
     onSuccess: () => {
-      toast.success('Meeting scheduled successfully!')
+      toast.success('Meeting scheduled successfully! Invitations dispatched.')
       setIsScheduleOpen(false)
       setTitle('')
       setDescription('')
@@ -208,6 +257,38 @@ export default function MeetingsPage() {
     },
     onError: (err: any) => {
       toast.error(err.message || 'Failed to schedule meeting')
+    },
+  })
+
+  // Update Meeting Mutation
+  const updateMeetingMutation = useMutation({
+    mutationFn: async () => {
+      if (!editMeetingId) return
+      const res = await updateMeeting(editMeetingId, {
+        title: editTitle,
+        description: editDescription,
+        scheduled_at: editScheduledAt,
+        venue: editVenue,
+        is_invite_only: editIsInviteOnly,
+        invited_user_ids: editIsInviteOnly ? editInvitedUserIds : [],
+      })
+      if (res.error) throw new Error(res.error)
+      return res.data
+    },
+    onSuccess: (updated) => {
+      toast.success('Meeting updated successfully!')
+      setIsEditOpen(false)
+      setEditMeetingId(null)
+      queryClient.invalidateQueries({ queryKey: ['meetings'] })
+      if (selectedMeetingId) {
+        queryClient.invalidateQueries({ queryKey: ['meeting-details', selectedMeetingId] })
+      }
+      if (viewMoreMeeting && viewMoreMeeting.id === editMeetingId) {
+        setViewMoreMeeting({ ...viewMoreMeeting, ...updated })
+      }
+    },
+    onError: (err: any) => {
+      toast.error(err.message || 'Failed to update meeting')
     },
   })
 
@@ -264,6 +345,7 @@ export default function MeetingsPage() {
     onSuccess: () => {
       toast.success('Meeting deleted')
       setSelectedMeetingId(null)
+      setViewMoreMeeting(null)
       queryClient.invalidateQueries({ queryKey: ['meetings'] })
     },
     onError: (err: any) => {
@@ -297,20 +379,20 @@ export default function MeetingsPage() {
   }, [activeMeeting, allMembers])
 
   return (
-    <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 space-y-8">
+    <div className="max-w-7xl mx-auto px-3 sm:px-6 lg:px-8 py-6 sm:py-8 space-y-6 sm:space-y-8">
       {/* Header */}
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
         <div>
           <div className="flex items-center gap-3">
-            <div className="h-10 w-10 rounded-xl bg-cyan-500/10 border border-cyan-500/20 flex items-center justify-center text-cyan-400">
+            <div className="h-10 w-10 rounded-xl bg-cyan-500/10 border border-cyan-500/20 flex items-center justify-center text-cyan-400 shrink-0">
               <CalendarDays className="h-5 w-5" />
             </div>
             <div>
               <h1 className="text-2xl sm:text-3xl font-bold tracking-tight text-neutral-900 dark:text-white">
                 Team Meetings
               </h1>
-              <p className="text-sm text-neutral-500 dark:text-neutral-400">
-                Schedule sessions, record Minutes of the Meeting (MoM), and track attendance.
+              <p className="text-xs sm:text-sm text-neutral-500 dark:text-neutral-400">
+                Schedule sessions, manage invites, record MoM, and track attendance.
               </p>
             </div>
           </div>
@@ -319,7 +401,7 @@ export default function MeetingsPage() {
         {isLeader && (
           <Button
             onClick={() => setIsScheduleOpen(true)}
-            className="bg-cyan-500 hover:bg-cyan-400 text-neutral-950 font-bold gap-2 shadow-lg shadow-cyan-500/20 rounded-xl"
+            className="w-full sm:w-auto bg-cyan-500 hover:bg-cyan-400 text-neutral-950 font-bold gap-2 shadow-lg shadow-cyan-500/20 rounded-xl h-10 px-4 text-xs sm:text-sm"
           >
             <Plus className="h-4 w-4" />
             Schedule Meeting
@@ -328,16 +410,16 @@ export default function MeetingsPage() {
       </div>
 
       {/* Tabs */}
-      <div className="flex items-center justify-between border-b border-neutral-200 dark:border-white/10 pb-4">
+      <div className="flex items-center justify-between border-b border-neutral-200 dark:border-white/10 pb-3 overflow-x-auto scrollbar-none">
         <Tabs value={filterTab} onValueChange={(v: any) => setFilterTab(v)} className="w-full">
-          <TabsList className="bg-neutral-100 dark:bg-white/5 border border-neutral-200 dark:border-white/5">
-            <TabsTrigger value="upcoming" className="font-semibold text-xs sm:text-sm">
+          <TabsList className="bg-neutral-100 dark:bg-white/5 border border-neutral-200 dark:border-white/5 w-full sm:w-auto">
+            <TabsTrigger value="upcoming" className="font-semibold text-xs sm:text-sm flex-1 sm:flex-initial">
               Upcoming ({meetings.filter((m: any) => new Date(m.scheduled_at) >= now && m.status !== 'completed').length})
             </TabsTrigger>
-            <TabsTrigger value="completed" className="font-semibold text-xs sm:text-sm">
-              Completed / Past ({meetings.filter((m: any) => new Date(m.scheduled_at) < now || m.status === 'completed').length})
+            <TabsTrigger value="completed" className="font-semibold text-xs sm:text-sm flex-1 sm:flex-initial">
+              Completed ({meetings.filter((m: any) => new Date(m.scheduled_at) < now || m.status === 'completed').length})
             </TabsTrigger>
-            <TabsTrigger value="all" className="font-semibold text-xs sm:text-sm">
+            <TabsTrigger value="all" className="font-semibold text-xs sm:text-sm flex-1 sm:flex-initial">
               All ({meetings.length})
             </TabsTrigger>
           </TabsList>
@@ -346,16 +428,16 @@ export default function MeetingsPage() {
 
       {/* Meeting Cards Grid */}
       {isLoadingMeetings ? (
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 sm:gap-6">
           {[1, 2, 3].map((i) => (
-            <div key={i} className="h-48 rounded-2xl bg-neutral-100 dark:bg-white/5 animate-pulse" />
+            <div key={i} className="h-56 rounded-3xl bg-neutral-100 dark:bg-white/5 animate-pulse" />
           ))}
         </div>
       ) : filteredMeetings.length === 0 ? (
-        <div className="text-center py-16 border border-dashed border-neutral-200 dark:border-white/10 rounded-3xl">
+        <div className="text-center py-16 px-4 border border-dashed border-neutral-200 dark:border-white/10 rounded-3xl">
           <CalendarDays className="h-12 w-12 text-neutral-400 mx-auto mb-3 opacity-50" />
           <h3 className="text-lg font-bold text-neutral-800 dark:text-neutral-200">No meetings found</h3>
-          <p className="text-sm text-neutral-500 max-w-sm mx-auto mt-1">
+          <p className="text-xs sm:text-sm text-neutral-500 max-w-sm mx-auto mt-1">
             {filterTab === 'upcoming'
               ? 'No upcoming meetings scheduled right now.'
               : 'No past meetings recorded.'}
@@ -364,14 +446,14 @@ export default function MeetingsPage() {
             <Button
               onClick={() => setIsScheduleOpen(true)}
               variant="outline"
-              className="mt-4 rounded-xl border-neutral-200 dark:border-white/10"
+              className="mt-4 rounded-xl border-neutral-200 dark:border-white/10 text-xs"
             >
               <Plus className="h-4 w-4 mr-2" /> Schedule First Meeting
             </Button>
           )}
         </div>
       ) : (
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 sm:gap-6">
           {filteredMeetings.map((m: any) => {
             const dateObj = new Date(m.scheduled_at)
             const isCompleted = m.status === 'completed'
@@ -383,17 +465,17 @@ export default function MeetingsPage() {
                 key={m.id}
                 className="bg-card/40 backdrop-blur-md border-neutral-200 dark:border-white/10 hover:border-cyan-500/30 transition-all rounded-3xl overflow-hidden flex flex-col justify-between shadow-sm hover:shadow-cyan-500/5 group"
               >
-                <CardHeader className="pb-3">
+                <CardHeader className="pb-3 p-4 sm:p-5">
                   <div className="flex items-center justify-between gap-2 mb-2">
-                    <div className="flex items-center gap-2 flex-wrap">
+                    <div className="flex items-center gap-1.5 flex-wrap">
                       <Badge
                         variant="secondary"
                         className={
                           isCompleted
-                            ? 'bg-emerald-500/10 text-emerald-400 border border-emerald-500/20'
+                            ? 'bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 text-[10px]'
                             : isCancelled
-                            ? 'bg-red-500/10 text-red-400 border border-red-500/20'
-                            : 'bg-cyan-500/10 text-cyan-400 border border-cyan-500/20'
+                            ? 'bg-red-500/10 text-red-400 border border-red-500/20 text-[10px]'
+                            : 'bg-cyan-500/10 text-cyan-400 border border-cyan-500/20 text-[10px]'
                         }
                       >
                         {m.status ? m.status.toUpperCase() : 'SCHEDULED'}
@@ -407,9 +489,21 @@ export default function MeetingsPage() {
                         </Badge>
                       )}
                     </div>
+
+                    {isLeader && (
+                      <Button
+                        size="icon"
+                        variant="ghost"
+                        onClick={() => handleOpenEdit(m)}
+                        className="h-7 w-7 text-neutral-400 hover:text-cyan-400 hover:bg-cyan-500/10 rounded-lg shrink-0"
+                        title="Edit Meeting"
+                      >
+                        <Pencil className="h-3.5 w-3.5" />
+                      </Button>
+                    )}
                   </div>
 
-                  <CardTitle className="text-xl font-bold text-neutral-900 dark:text-white group-hover:text-cyan-400 transition-colors line-clamp-1">
+                  <CardTitle className="text-lg sm:text-xl font-bold text-neutral-900 dark:text-white group-hover:text-cyan-400 transition-colors line-clamp-1">
                     {m.title}
                   </CardTitle>
 
@@ -420,15 +514,15 @@ export default function MeetingsPage() {
                   )}
                 </CardHeader>
 
-                <CardContent className="space-y-4 pt-0">
+                <CardContent className="space-y-4 pt-0 p-4 sm:p-5">
                   <div className="space-y-2 text-xs text-neutral-600 dark:text-neutral-300">
                     <div className="flex items-center gap-2">
-                      <Clock className="h-3.5 w-3.5 text-neutral-400 shrink-0" />
-                      <span>{format(dateObj, 'EEE, MMM d, yyyy • h:mm a')}</span>
+                      <Clock className="h-3.5 w-3.5 text-cyan-400 shrink-0" />
+                      <span className="truncate">{format(dateObj, 'EEE, MMM d, yyyy • h:mm a')}</span>
                     </div>
                     {m.venue && (
                       <div className="flex items-center gap-2">
-                        <MapPin className="h-3.5 w-3.5 text-neutral-400 shrink-0" />
+                        <MapPin className="h-3.5 w-3.5 text-amber-400 shrink-0" />
                         <span className="truncate">{m.venue}</span>
                       </div>
                     )}
@@ -446,24 +540,22 @@ export default function MeetingsPage() {
                     </div>
                   )}
 
-                  <div className="pt-2 border-t border-neutral-200 dark:border-white/5 flex items-center justify-between">
-                    <div className="flex items-center gap-2">
-                      <Avatar className="h-6 w-6">
-                        <AvatarImage src={m.profiles?.avatar_url || ''} />
-                        <AvatarFallback className="text-[10px]">
-                          {m.profiles?.full_name?.charAt(0) || 'U'}
-                        </AvatarFallback>
-                      </Avatar>
-                      <span className="text-[11px] text-neutral-500 truncate max-w-[120px]">
-                        {m.profiles?.full_name || 'Organizer'}
-                      </span>
-                    </div>
+                  <div className="pt-3 border-t border-neutral-200 dark:border-white/5 flex items-center justify-between gap-2">
+                    <Button
+                      onClick={() => setViewMoreMeeting(m)}
+                      variant="outline"
+                      size="sm"
+                      className="rounded-xl text-xs font-semibold gap-1.5 h-8 border-neutral-200 dark:border-white/10 hover:bg-white/5 flex-1"
+                    >
+                      <Eye className="h-3.5 w-3.5 text-cyan-400" />
+                      View More
+                    </Button>
 
                     <Button
                       onClick={() => handleOpenDetails(m)}
                       variant="secondary"
                       size="sm"
-                      className="rounded-xl text-xs font-semibold hover:bg-cyan-500 hover:text-neutral-950 transition-colors"
+                      className="rounded-xl text-xs font-semibold hover:bg-cyan-500 hover:text-neutral-950 transition-colors h-8 flex-1"
                     >
                       Workspace & MoM
                     </Button>
@@ -475,9 +567,147 @@ export default function MeetingsPage() {
         </div>
       )}
 
+      {/* View More Meeting Modal */}
+      <Dialog open={!!viewMoreMeeting} onOpenChange={(open) => !open && setViewMoreMeeting(null)}>
+        <DialogContent className="w-[calc(100%-1.5rem)] sm:max-w-2xl max-h-[90vh] overflow-y-auto rounded-3xl bg-card border border-neutral-200 dark:border-white/10 p-5 sm:p-7">
+          {viewMoreMeeting && (
+            <div className="space-y-6">
+              <DialogHeader>
+                <div className="flex items-center gap-2 mb-2 flex-wrap">
+                  <Badge
+                    variant="secondary"
+                    className={
+                      viewMoreMeeting.status === 'completed'
+                        ? 'bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 text-xs font-bold'
+                        : viewMoreMeeting.status === 'cancelled'
+                        ? 'bg-red-500/10 text-red-400 border border-red-500/20 text-xs font-bold'
+                        : 'bg-cyan-500/10 text-cyan-400 border border-cyan-500/20 text-xs font-bold'
+                    }
+                  >
+                    {viewMoreMeeting.status ? viewMoreMeeting.status.toUpperCase() : 'SCHEDULED'}
+                  </Badge>
+                  {viewMoreMeeting.is_invite_only && (
+                    <Badge variant="outline" className="bg-amber-500/10 text-amber-400 border-amber-500/20 text-xs gap-1 font-semibold">
+                      <Lock className="h-3 w-3" /> Private / Invite Only
+                    </Badge>
+                  )}
+                </div>
+                <DialogTitle className="text-xl sm:text-2xl font-black text-neutral-900 dark:text-white leading-snug">
+                  {viewMoreMeeting.title}
+                </DialogTitle>
+                <DialogDescription className="text-xs text-neutral-400 flex items-center gap-2 pt-1">
+                  <span>Organized by</span>
+                  <span className="font-semibold text-neutral-200">{viewMoreMeeting.profiles?.full_name || 'Core Board'}</span>
+                </DialogDescription>
+              </DialogHeader>
+
+              {/* Quick Details Grid */}
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 p-4 rounded-2xl bg-neutral-100 dark:bg-white/5 border border-neutral-200 dark:border-white/5 text-xs text-neutral-300">
+                <div className="flex items-center gap-2.5">
+                  <Clock className="h-4 w-4 text-cyan-400 shrink-0" />
+                  <div>
+                    <span className="text-[10px] uppercase font-semibold text-neutral-400 block">Date & Time</span>
+                    <span className="font-medium text-neutral-100">
+                      {format(new Date(viewMoreMeeting.scheduled_at), 'PPPP • p')}
+                    </span>
+                  </div>
+                </div>
+
+                <div className="flex items-center gap-2.5">
+                  <MapPin className="h-4 w-4 text-amber-400 shrink-0" />
+                  <div>
+                    <span className="text-[10px] uppercase font-semibold text-neutral-400 block">Location / Venue</span>
+                    <span className="font-medium text-neutral-100">{viewMoreMeeting.venue || 'To Be Announced'}</span>
+                  </div>
+                </div>
+              </div>
+
+              {/* Full Description / Agenda */}
+              <div className="space-y-1.5">
+                <h4 className="text-xs font-bold uppercase tracking-wider text-neutral-400">Meeting Agenda & Description</h4>
+                <div className="p-4 rounded-2xl bg-neutral-900/40 border border-neutral-200 dark:border-white/10 text-xs sm:text-sm text-neutral-300 whitespace-pre-wrap leading-relaxed">
+                  {viewMoreMeeting.description || 'No detailed agenda provided for this meeting.'}
+                </div>
+              </div>
+
+              {/* Invited Members (if invite only) */}
+              {viewMoreMeeting.is_invite_only && (
+                <div className="space-y-2">
+                  <h4 className="text-xs font-bold uppercase tracking-wider text-neutral-400 flex items-center gap-1.5">
+                    <Users className="h-3.5 w-3.5 text-amber-400" />
+                    Invited Members ({viewMoreMeeting.meeting_invites?.length || 0})
+                  </h4>
+                  <div className="flex flex-wrap gap-2 max-h-36 overflow-y-auto pr-1">
+                    {(!viewMoreMeeting.meeting_invites || viewMoreMeeting.meeting_invites.length === 0) ? (
+                      <p className="text-xs text-neutral-500 italic">No specific members invited yet.</p>
+                    ) : (
+                      viewMoreMeeting.meeting_invites.map((inv: any) => (
+                        <div
+                          key={inv.user_id}
+                          className="flex items-center gap-2 px-3 py-1.5 rounded-xl bg-white/5 border border-white/5 text-xs text-neutral-300"
+                        >
+                          <Avatar className="h-5 w-5">
+                            <AvatarImage src={inv.profiles?.avatar_url || ''} />
+                            <AvatarFallback className="text-[9px]">
+                              {inv.profiles?.full_name?.charAt(0) || 'U'}
+                            </AvatarFallback>
+                          </Avatar>
+                          <span>{inv.profiles?.full_name || 'Member'}</span>
+                        </div>
+                      ))
+                    )}
+                  </div>
+                </div>
+              )}
+
+              {/* Executive Summary if recorded */}
+              {viewMoreMeeting.summary && (
+                <div className="space-y-1.5">
+                  <h4 className="text-xs font-bold uppercase tracking-wider text-neutral-400 flex items-center gap-1.5">
+                    <FileText className="h-3.5 w-3.5 text-cyan-400" />
+                    Summary & Key Takeaways
+                  </h4>
+                  <div className="p-4 rounded-2xl bg-cyan-500/5 border border-cyan-500/20 text-xs text-neutral-300 leading-relaxed">
+                    {viewMoreMeeting.summary}
+                  </div>
+                </div>
+              )}
+
+              <DialogFooter className="flex-col sm:flex-row gap-2 pt-2">
+                {isLeader && (
+                  <Button
+                    variant="outline"
+                    onClick={() => {
+                      const m = viewMoreMeeting
+                      setViewMoreMeeting(null)
+                      handleOpenEdit(m)
+                    }}
+                    className="rounded-xl text-xs font-bold border-cyan-500/30 text-cyan-400 hover:bg-cyan-500/10"
+                  >
+                    <Pencil className="h-3.5 w-3.5 mr-1.5" />
+                    Edit Meeting
+                  </Button>
+                )}
+                <Button
+                  onClick={() => {
+                    const m = viewMoreMeeting
+                    setViewMoreMeeting(null)
+                    handleOpenDetails(m)
+                  }}
+                  className="bg-cyan-500 hover:bg-cyan-400 text-neutral-950 font-bold rounded-xl text-xs gap-1.5"
+                >
+                  <FileText className="h-3.5 w-3.5" />
+                  Open MoM & Attendance Workspace
+                </Button>
+              </DialogFooter>
+            </div>
+          )}
+        </DialogContent>
+      </Dialog>
+
       {/* Schedule Meeting Dialog */}
       <Dialog open={isScheduleOpen} onOpenChange={setIsScheduleOpen}>
-        <DialogContent className="w-full sm:max-w-2xl max-h-[90vh] overflow-y-auto rounded-3xl bg-card border border-neutral-200 dark:border-white/10 p-6">
+        <DialogContent className="w-[calc(100%-1.5rem)] sm:max-w-2xl max-h-[90vh] overflow-y-auto rounded-3xl bg-card border border-neutral-200 dark:border-white/10 p-5 sm:p-7">
           <DialogHeader>
             <DialogTitle className="text-xl font-bold text-neutral-900 dark:text-white flex items-center gap-2">
               <CalendarDays className="h-5 w-5 text-cyan-400" />
@@ -498,7 +728,7 @@ export default function MeetingsPage() {
                 placeholder="e.g. Weekly Production Review & Gear Allocation"
                 value={title}
                 onChange={(e) => setTitle(e.target.value)}
-                className="rounded-xl"
+                className="rounded-xl text-xs sm:text-sm h-10"
               />
             </div>
 
@@ -512,7 +742,7 @@ export default function MeetingsPage() {
                 rows={3}
                 value={description}
                 onChange={(e) => setDescription(e.target.value)}
-                className="rounded-xl resize-none"
+                className="rounded-xl resize-none text-xs sm:text-sm"
               />
             </div>
 
@@ -526,7 +756,7 @@ export default function MeetingsPage() {
                   type="datetime-local"
                   value={scheduledAt}
                   onChange={(e) => setScheduledAt(e.target.value)}
-                  className="rounded-xl"
+                  className="rounded-xl text-xs sm:text-sm h-10"
                 />
               </div>
 
@@ -539,7 +769,7 @@ export default function MeetingsPage() {
                   placeholder="e.g. Media Lab 102 or Google Meet"
                   value={venue}
                   onChange={(e) => setVenue(e.target.value)}
-                  className="rounded-xl"
+                  className="rounded-xl text-xs sm:text-sm h-10"
                 />
               </div>
             </div>
@@ -547,12 +777,12 @@ export default function MeetingsPage() {
             {/* Invite Only Toggle */}
             <div className="p-4 rounded-2xl bg-neutral-100 dark:bg-white/5 border border-neutral-200 dark:border-white/5 space-y-3">
               <div className="flex items-center justify-between">
-                <div className="space-y-0.5">
+                <div className="space-y-0.5 pr-2">
                   <div className="text-sm font-bold text-neutral-800 dark:text-neutral-200 flex items-center gap-1.5">
-                    <Lock className="h-4 w-4 text-amber-500" /> Invite Only Meeting
+                    <Lock className="h-4 w-4 text-amber-500 shrink-0" /> Invite Only Meeting
                   </div>
                   <p className="text-xs text-neutral-500">
-                    When enabled, this meeting will be hidden from other core members and only visible to invited people.
+                    When enabled, automated invitation emails will be sent from <strong>photohub@bitsathy.ac.in</strong> to invited members.
                   </p>
                 </div>
                 <Switch checked={isInviteOnly} onCheckedChange={setIsInviteOnly} />
@@ -617,14 +847,14 @@ export default function MeetingsPage() {
                     )}
                   </div>
                   <p className="text-[11px] text-neutral-400 font-medium">
-                    {invitedUserIds.length} member{invitedUserIds.length === 1 ? '' : 's'} selected to invite
+                    {invitedUserIds.length} member{invitedUserIds.length === 1 ? '' : 's'} selected to receive automated email invites
                   </p>
                 </div>
               )}
             </div>
           </div>
 
-          <DialogFooter className="gap-2 sm:gap-0">
+          <DialogFooter className="gap-2 sm:gap-0 flex-col sm:flex-row">
             <Button
               variant="ghost"
               onClick={() => setIsScheduleOpen(false)}
@@ -637,7 +867,175 @@ export default function MeetingsPage() {
               disabled={createMeetingMutation.isPending || !title || !scheduledAt}
               className="bg-cyan-500 hover:bg-cyan-400 text-neutral-950 font-bold rounded-xl text-xs"
             >
-              {createMeetingMutation.isPending ? 'Scheduling...' : 'Confirm Schedule'}
+              {createMeetingMutation.isPending ? 'Scheduling & Dispatching...' : 'Confirm Schedule'}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Edit Meeting Dialog */}
+      <Dialog open={isEditOpen} onOpenChange={setIsEditOpen}>
+        <DialogContent className="w-[calc(100%-1.5rem)] sm:max-w-2xl max-h-[90vh] overflow-y-auto rounded-3xl bg-card border border-neutral-200 dark:border-white/10 p-5 sm:p-7">
+          <DialogHeader>
+            <DialogTitle className="text-xl font-bold text-neutral-900 dark:text-white flex items-center gap-2">
+              <Pencil className="h-5 w-5 text-cyan-400" />
+              Edit Meeting Details
+            </DialogTitle>
+            <DialogDescription className="text-xs text-neutral-500">
+              Update the schedule, venue, agenda, or invite list for this meeting session.
+            </DialogDescription>
+          </DialogHeader>
+
+          <div className="space-y-4 py-2">
+            <div className="space-y-1.5">
+              <Label htmlFor="edit-title" className="text-xs font-semibold">
+                Meeting Title *
+              </Label>
+              <Input
+                id="edit-title"
+                placeholder="Meeting Title"
+                value={editTitle}
+                onChange={(e) => setEditTitle(e.target.value)}
+                className="rounded-xl text-xs sm:text-sm h-10"
+              />
+            </div>
+
+            <div className="space-y-1.5">
+              <Label htmlFor="edit-desc" className="text-xs font-semibold">
+                Agenda / Description
+              </Label>
+              <Textarea
+                id="edit-desc"
+                placeholder="Key agenda points to discuss..."
+                rows={3}
+                value={editDescription}
+                onChange={(e) => setEditDescription(e.target.value)}
+                className="rounded-xl resize-none text-xs sm:text-sm"
+              />
+            </div>
+
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+              <div className="space-y-1.5">
+                <Label htmlFor="edit-time" className="text-xs font-semibold">
+                  Date & Time *
+                </Label>
+                <Input
+                  id="edit-time"
+                  type="datetime-local"
+                  value={editScheduledAt}
+                  onChange={(e) => setEditScheduledAt(e.target.value)}
+                  className="rounded-xl text-xs sm:text-sm h-10"
+                />
+              </div>
+
+              <div className="space-y-1.5">
+                <Label htmlFor="edit-venue" className="text-xs font-semibold">
+                  Venue / Location
+                </Label>
+                <Input
+                  id="edit-venue"
+                  placeholder="e.g. Media Lab 102 or Google Meet"
+                  value={editVenue}
+                  onChange={(e) => setEditVenue(e.target.value)}
+                  className="rounded-xl text-xs sm:text-sm h-10"
+                />
+              </div>
+            </div>
+
+            {/* Invite Only Toggle */}
+            <div className="p-4 rounded-2xl bg-neutral-100 dark:bg-white/5 border border-neutral-200 dark:border-white/5 space-y-3">
+              <div className="flex items-center justify-between">
+                <div className="space-y-0.5 pr-2">
+                  <div className="text-sm font-bold text-neutral-800 dark:text-neutral-200 flex items-center gap-1.5">
+                    <Lock className="h-4 w-4 text-amber-500 shrink-0" /> Invite Only Meeting
+                  </div>
+                  <p className="text-xs text-neutral-500">
+                    Automated invitation emails are sent to newly invited members from <strong>photohub@bitsathy.ac.in</strong>.
+                  </p>
+                </div>
+                <Switch checked={editIsInviteOnly} onCheckedChange={setEditIsInviteOnly} />
+              </div>
+
+              {/* Member Picker */}
+              {editIsInviteOnly && (
+                <div className="pt-3 border-t border-neutral-200 dark:border-white/5 space-y-3">
+                  <div className="relative">
+                    <Search className="absolute left-3 top-2.5 h-4 w-4 text-neutral-400" />
+                    <Input
+                      placeholder="Search members by name, roll no..."
+                      value={editMemberSearchQuery}
+                      onChange={(e) => setEditMemberSearchQuery(e.target.value)}
+                      className="pl-9 h-9 text-xs rounded-xl"
+                    />
+                  </div>
+
+                  <div className="max-h-48 overflow-y-auto space-y-1.5 pr-1">
+                    {filteredEditInviteMembers.length === 0 ? (
+                      <p className="text-xs text-neutral-400 text-center py-4">No matching members found</p>
+                    ) : (
+                      filteredEditInviteMembers.map((member: any) => {
+                        const isSelected = editInvitedUserIds.includes(member.id)
+                        return (
+                          <div
+                            key={member.id}
+                            onClick={() => {
+                              if (isSelected) {
+                                setEditInvitedUserIds(editInvitedUserIds.filter((id) => id !== member.id))
+                              } else {
+                                setEditInvitedUserIds([...editInvitedUserIds, member.id])
+                              }
+                            }}
+                            className={`flex items-center justify-between p-2 rounded-xl border text-xs cursor-pointer transition-colors ${
+                              isSelected
+                                ? 'bg-cyan-500/10 border-cyan-500/30 text-cyan-400'
+                                : 'bg-neutral-50 dark:bg-white/[0.02] border-neutral-200 dark:border-white/5 hover:bg-neutral-100 dark:hover:bg-white/5'
+                            }`}
+                          >
+                            <div className="flex items-center gap-2 min-w-0">
+                              <Avatar className="h-6 w-6">
+                                <AvatarImage src={member.avatar_url || ''} />
+                                <AvatarFallback className="text-[10px]">
+                                  {member.full_name?.charAt(0) || 'U'}
+                                </AvatarFallback>
+                              </Avatar>
+                              <div className="truncate">
+                                <p className="font-semibold text-neutral-800 dark:text-neutral-200 truncate">
+                                  {member.full_name || 'Unnamed Member'}
+                                </p>
+                                <p className="text-[10px] text-neutral-400">
+                                  {member.roll_number ? `${member.roll_number} • ` : ''}
+                                  {ROLE_LABELS[member.role as keyof typeof ROLE_LABELS] || member.role}
+                                </p>
+                              </div>
+                            </div>
+                            <Checkbox checked={isSelected} className="rounded-md" />
+                          </div>
+                        )
+                      })
+                    )}
+                  </div>
+                  <p className="text-[11px] text-neutral-400 font-medium">
+                    {editInvitedUserIds.length} member{editInvitedUserIds.length === 1 ? '' : 's'} invited
+                  </p>
+                </div>
+              )}
+            </div>
+          </div>
+
+          <DialogFooter className="gap-2 sm:gap-0 flex-col sm:flex-row">
+            <Button
+              variant="ghost"
+              onClick={() => setIsEditOpen(false)}
+              className="rounded-xl text-xs font-semibold"
+            >
+              Cancel
+            </Button>
+            <Button
+              onClick={() => updateMeetingMutation.mutate()}
+              disabled={updateMeetingMutation.isPending || !editTitle || !editScheduledAt}
+              className="bg-cyan-500 hover:bg-cyan-400 text-neutral-950 font-bold rounded-xl text-xs"
+            >
+              {updateMeetingMutation.isPending ? 'Saving Changes...' : 'Save Changes'}
             </Button>
           </DialogFooter>
         </DialogContent>
@@ -645,7 +1043,7 @@ export default function MeetingsPage() {
 
       {/* Meeting Details & MoM Workspace Dialog */}
       <Dialog open={!!selectedMeetingId} onOpenChange={(open) => !open && setSelectedMeetingId(null)}>
-        <DialogContent className="w-[calc(100%-2rem)] max-w-5xl h-[90vh] max-h-[860px] flex flex-col p-0 gap-0 overflow-hidden rounded-3xl bg-card border border-neutral-200 dark:border-white/10 shadow-2xl">
+        <DialogContent className="w-[calc(100%-1rem)] sm:w-[calc(100%-2rem)] max-w-5xl h-[92vh] max-h-[860px] flex flex-col p-0 gap-0 overflow-hidden rounded-3xl bg-card border border-neutral-200 dark:border-white/10 shadow-2xl">
           {isLoadingDetails ? (
             <div className="py-24 text-center">
               <div className="animate-spin h-10 w-10 border-2 border-cyan-400 border-t-transparent rounded-full mx-auto mb-4" />
@@ -663,8 +1061,8 @@ export default function MeetingsPage() {
           ) : (
             <>
               {/* Header (Fixed Top) */}
-              <div className="p-6 md:p-7 pb-5 border-b border-neutral-200 dark:border-white/10 shrink-0 bg-neutral-900/40">
-                <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-4 pr-8">
+              <div className="p-4 sm:p-6 md:p-7 pb-4 sm:pb-5 border-b border-neutral-200 dark:border-white/10 shrink-0 bg-neutral-900/40">
+                <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-3 sm:gap-4 pr-6">
                   <div className="space-y-1.5 min-w-0">
                     <div className="flex items-center gap-2 flex-wrap">
                       <Badge
@@ -687,10 +1085,10 @@ export default function MeetingsPage() {
                         </Badge>
                       )}
                     </div>
-                    <h2 className="text-2xl sm:text-3xl font-black text-neutral-900 dark:text-white tracking-tight truncate">
+                    <h2 className="text-xl sm:text-2xl md:text-3xl font-black text-neutral-900 dark:text-white tracking-tight truncate">
                       {activeMeeting.title}
                     </h2>
-                    <div className="flex items-center gap-4 text-xs text-neutral-400 flex-wrap">
+                    <div className="flex items-center gap-3 sm:gap-4 text-xs text-neutral-400 flex-wrap">
                       <span className="flex items-center gap-1.5 font-medium">
                         <Clock className="h-3.5 w-3.5 text-cyan-400 shrink-0" />
                         {format(new Date(activeMeeting.scheduled_at), 'PPP • p')}
@@ -705,30 +1103,40 @@ export default function MeetingsPage() {
                   </div>
 
                   {isLeader && (
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      onClick={() => {
-                        if (confirm('Are you sure you want to delete this meeting?')) {
-                          deleteMeetingMutation.mutate(activeMeeting.id)
-                        }
-                      }}
-                      className="text-red-400 hover:text-red-300 hover:bg-red-500/10 rounded-xl text-xs gap-1.5 shrink-0 self-start"
-                    >
-                      <Trash2 className="h-3.5 w-3.5" /> Delete Meeting
-                    </Button>
+                    <div className="flex items-center gap-2 shrink-0 self-start">
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={() => handleOpenEdit(activeMeeting)}
+                        className="rounded-xl text-xs gap-1 border-white/10 hover:bg-white/5"
+                      >
+                        <Pencil className="h-3.5 w-3.5" /> Edit
+                      </Button>
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        onClick={() => {
+                          if (confirm('Are you sure you want to delete this meeting?')) {
+                            deleteMeetingMutation.mutate(activeMeeting.id)
+                          }
+                        }}
+                        className="text-red-400 hover:text-red-300 hover:bg-red-500/10 rounded-xl text-xs gap-1.5"
+                      >
+                        <Trash2 className="h-3.5 w-3.5" /> Delete
+                      </Button>
+                    </div>
                   )}
                 </div>
               </div>
 
               {/* Scrollable Body */}
-              <div className="flex-1 overflow-y-auto p-6 md:p-8 space-y-6">
+              <div className="flex-1 overflow-y-auto p-4 sm:p-6 md:p-8 space-y-6">
                 <Tabs value={detailsTab} onValueChange={(v: any) => setDetailsTab(v)} className="space-y-6">
                   <TabsList className="bg-neutral-100 dark:bg-white/5 border border-neutral-200 dark:border-white/5 p-1 rounded-2xl w-full sm:w-auto h-11">
-                    <TabsTrigger value="mom" className="gap-2 font-bold text-xs sm:text-sm px-5 rounded-xl data-[state=active]:bg-cyan-500 data-[state=active]:text-neutral-950">
+                    <TabsTrigger value="mom" className="gap-2 font-bold text-xs sm:text-sm px-4 sm:px-5 rounded-xl data-[state=active]:bg-cyan-500 data-[state=active]:text-neutral-950 flex-1 sm:flex-initial">
                       <FileText className="h-4 w-4" /> Minutes of Meeting (MoM)
                     </TabsTrigger>
-                    <TabsTrigger value="attendance" className="gap-2 font-bold text-xs sm:text-sm px-5 rounded-xl data-[state=active]:bg-cyan-500 data-[state=active]:text-neutral-950">
+                    <TabsTrigger value="attendance" className="gap-2 font-bold text-xs sm:text-sm px-4 sm:px-5 rounded-xl data-[state=active]:bg-cyan-500 data-[state=active]:text-neutral-950 flex-1 sm:flex-initial">
                       <Users className="h-4 w-4" /> Attendance Tracker
                     </TabsTrigger>
                   </TabsList>
@@ -791,7 +1199,7 @@ export default function MeetingsPage() {
                       <Textarea
                         id="m-mom"
                         placeholder="1. Agenda Items Discussed:&#10;   - Production schedule for upcoming short film&#10;   - Gear maintenance & battery inventory checklist&#10;&#10;2. Discussion Points & Member Inputs:&#10;   - ...&#10;&#10;3. Action Items & Deadlines:&#10;   - [Member Name]: [Task assigned] by [Date]"
-                        rows={13}
+                        rows={12}
                         disabled={!isLeader}
                         value={momText}
                         onChange={(e) => setMomText(e.target.value)}
@@ -832,7 +1240,7 @@ export default function MeetingsPage() {
                               })
                               setAttendanceMap(updated)
                             }}
-                            className="rounded-xl text-xs font-semibold border-emerald-500/30 text-emerald-400 hover:bg-emerald-500/10"
+                            className="rounded-xl text-xs font-semibold border-emerald-500/30 text-emerald-400 hover:bg-emerald-500/10 h-8"
                           >
                             Mark All Present
                           </Button>
@@ -847,7 +1255,7 @@ export default function MeetingsPage() {
                               })
                               setAttendanceMap(updated)
                             }}
-                            className="rounded-xl text-xs font-semibold border-white/10 hover:bg-white/5"
+                            className="rounded-xl text-xs font-semibold border-white/10 hover:bg-white/5 h-8"
                           >
                             Reset
                           </Button>
@@ -879,28 +1287,28 @@ export default function MeetingsPage() {
                                       },
                                     })
                                   }}
-                                  className="h-5 w-5 rounded-md border-white/20 data-[state=checked]:bg-cyan-500 data-[state=checked]:text-black"
+                                  className="h-5 w-5 rounded-md border-white/20 data-[state=checked]:bg-cyan-500 data-[state=checked]:text-black shrink-0"
                                 />
 
-                                <Avatar className="h-9 w-9 border border-white/10">
+                                <Avatar className="h-8 w-8 sm:h-9 sm:w-9 border border-white/10 shrink-0">
                                   <AvatarImage src={member.avatar_url || ''} />
                                   <AvatarFallback className="text-xs font-bold">
                                     {member.full_name?.charAt(0) || 'U'}
                                   </AvatarFallback>
                                 </Avatar>
 
-                                <div>
-                                  <p className="text-sm font-bold text-neutral-900 dark:text-white">
+                                <div className="min-w-0">
+                                  <p className="text-sm font-bold text-neutral-900 dark:text-white truncate">
                                     {member.full_name || 'Member'}
                                   </p>
-                                  <p className="text-[11px] text-neutral-400">
+                                  <p className="text-[11px] text-neutral-400 truncate">
                                     {member.roll_number ? `${member.roll_number} • ` : ''}
                                     {ROLE_LABELS[member.role as keyof typeof ROLE_LABELS] || member.role}
                                   </p>
                                 </div>
                               </div>
 
-                              <div className="flex items-center gap-3 sm:max-w-sm w-full">
+                              <div className="flex items-center gap-2 sm:max-w-sm w-full pl-8 sm:pl-0">
                                 <Input
                                   placeholder="Attendance remarks / notes..."
                                   disabled={!isLeader}
@@ -914,11 +1322,11 @@ export default function MeetingsPage() {
                                       },
                                     })
                                   }}
-                                  className="h-9 text-xs rounded-xl bg-neutral-900/40 border-neutral-200 dark:border-white/10"
+                                  className="h-8 text-xs rounded-xl bg-neutral-900/40 border-neutral-200 dark:border-white/10 flex-1"
                                 />
                                 <Badge
                                   variant="outline"
-                                  className={`text-xs px-2.5 py-1 shrink-0 font-bold ${
+                                  className={`text-[11px] px-2.5 py-1 shrink-0 font-bold ${
                                     cur.attended
                                       ? 'bg-emerald-500/10 text-emerald-400 border-emerald-500/20'
                                       : 'bg-neutral-500/10 text-neutral-400 border-neutral-500/20'
@@ -938,15 +1346,15 @@ export default function MeetingsPage() {
 
               {/* Sticky Footer Action Bar */}
               {isLeader && (
-                <div className="p-4 px-6 md:px-8 border-t border-neutral-200 dark:border-white/10 bg-neutral-950/80 backdrop-blur-md flex items-center justify-between shrink-0">
+                <div className="p-3 sm:p-4 px-4 sm:px-6 md:px-8 border-t border-neutral-200 dark:border-white/10 bg-neutral-950/80 backdrop-blur-md flex items-center justify-between shrink-0">
                   <div className="text-xs text-neutral-400 hidden sm:block">
                     {detailsTab === 'mom' ? 'Press Save to store Minutes of Meeting and Summary' : 'Press Save to commit attendance checklist'}
                   </div>
-                  <div className="flex items-center gap-3 ml-auto">
+                  <div className="flex items-center gap-2 sm:gap-3 ml-auto w-full sm:w-auto justify-end">
                     <Button
                       variant="ghost"
                       onClick={() => setSelectedMeetingId(null)}
-                      className="rounded-xl text-xs font-semibold"
+                      className="rounded-xl text-xs font-semibold h-9"
                     >
                       Close
                     </Button>
@@ -954,16 +1362,16 @@ export default function MeetingsPage() {
                       <Button
                         onClick={() => updateMoMMutation.mutate()}
                         disabled={updateMoMMutation.isPending}
-                        className="bg-cyan-500 hover:bg-cyan-400 text-neutral-950 font-bold rounded-xl text-xs sm:text-sm px-5 gap-2 shadow-lg shadow-cyan-500/20"
+                        className="bg-cyan-500 hover:bg-cyan-400 text-neutral-950 font-bold rounded-xl text-xs sm:text-sm px-4 sm:px-5 gap-2 shadow-lg shadow-cyan-500/20 h-9"
                       >
                         <Save className="h-4 w-4" />
-                        {updateMoMMutation.isPending ? 'Saving...' : 'Save Minutes & Summary'}
+                        {updateMoMMutation.isPending ? 'Saving...' : 'Save MoM'}
                       </Button>
                     ) : (
                       <Button
                         onClick={() => saveAttendanceMutation.mutate()}
                         disabled={saveAttendanceMutation.isPending}
-                        className="bg-cyan-500 hover:bg-cyan-400 text-neutral-950 font-bold rounded-xl text-xs sm:text-sm px-5 gap-2 shadow-lg shadow-cyan-500/20"
+                        className="bg-cyan-500 hover:bg-cyan-400 text-neutral-950 font-bold rounded-xl text-xs sm:text-sm px-4 sm:px-5 gap-2 shadow-lg shadow-cyan-500/20 h-9"
                       >
                         <Save className="h-4 w-4" />
                         {saveAttendanceMutation.isPending ? 'Saving...' : 'Save Attendance'}
