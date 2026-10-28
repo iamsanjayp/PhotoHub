@@ -1158,28 +1158,14 @@ export async function getEventVolunteers(eventId: string) {
   }
 }
 
-export async function assignEventVolunteer(eventId: string, userId: string, role?: string, notes?: string) {
+export async function assignEventVolunteers(eventId: string, userIds: string[]) {
   try {
     await assertAdminOrLeader()
     const adminClient = await createAdminClient()
 
-    const volunteerStatus = role && role.trim() ? `volunteer:${role.trim()}` : 'volunteer'
-
-    // Upsert registration as volunteer
-    const { data, error } = await adminClient
-      .from('event_registrations')
-      .upsert(
-        {
-          event_id: eventId,
-          user_id: userId,
-          status: volunteerStatus,
-        },
-        { onConflict: 'event_id,user_id' }
-      )
-      .select('*, profiles(id, full_name, roll_number)')
-      .single()
-
-    if (error) throw error
+    if (!userIds || userIds.length === 0) {
+      throw new Error('Please select at least one member to assign.')
+    }
 
     // Fetch event title for notification
     const { data: event } = await adminClient
@@ -1188,23 +1174,45 @@ export async function assignEventVolunteer(eventId: string, userId: string, role
       .eq('id', eventId)
       .single()
 
-    // Send notification
-    await adminClient.from('notifications').insert({
-      user_id: userId,
+    const upsertRows = userIds.map((uid) => ({
+      event_id: eventId,
+      user_id: uid,
+      status: 'volunteer',
+    }))
+
+    const { data, error } = await adminClient
+      .from('event_registrations')
+      .upsert(upsertRows, { onConflict: 'event_id,user_id' })
+      .select('*, profiles(id, full_name, email, roll_number, department, batch, phone, avatar_url)')
+
+    if (error) throw error
+
+    // Send notifications
+    const notifications = userIds.map((uid) => ({
+      user_id: uid,
       title: 'Event Volunteer Assignment 🎉',
-      message: `You have been assigned as a volunteer (${role?.trim() || 'Volunteer Team'}) for the event "${event?.title || 'Event'}".`,
-      type: 'assignment',
+      message: `You have been assigned as an Event Volunteer for "${event?.title || 'Event'}". You can view this assignment and claim missed attendance in My Assignments.`,
+      type: 'assignment' as const,
       source_type: 'event',
       source_id: eventId,
-    })
+    }))
+
+    await adminClient.from('notifications').insert(notifications)
 
     revalidatePath(`/admin/events/${eventId}`)
     revalidatePath(`/events/${eventId}`)
+    revalidatePath('/my-assignments')
     return { success: true, data }
   } catch (error: any) {
-    console.error('Error in assignEventVolunteer:', error)
-    return { error: error.message || 'Failed to assign event volunteer' }
+    console.error('Error in assignEventVolunteers:', error)
+    return { error: error.message || 'Failed to assign event volunteers' }
   }
+}
+
+export async function assignEventVolunteer(eventId: string, userId: string) {
+  const res = await assignEventVolunteers(eventId, [userId])
+  if (res.error) return { error: res.error }
+  return { success: true, data: res.data ? res.data[0] : null }
 }
 
 export async function removeEventVolunteer(registrationId: string, eventId: string) {

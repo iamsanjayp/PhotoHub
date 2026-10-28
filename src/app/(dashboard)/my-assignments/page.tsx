@@ -86,11 +86,12 @@ export default function MyAssignmentsPage() {
     }
 
     setIsClaiming(true)
+    const isEvent = !!claimShoot?.is_event_volunteer
     const res = await addMissedAttendanceRecord({
-      sourceType: 'shoot',
-      sourceId: claimShoot.id,
+      sourceType: isEvent ? 'event' : 'shoot',
+      sourceId: isEvent ? (claimShoot.event_id || claimShoot.id) : claimShoot.id,
       userId: profile?.id,
-      name: profile?.full_name || 'Crew Member',
+      name: profile?.full_name || 'Volunteer',
       email: profile?.email || '',
       rollNumber: claimRollNumber.trim(),
       hours: claimSelectedHours,
@@ -109,10 +110,6 @@ export default function MyAssignmentsPage() {
     }
   }
 
-  // Guard role: camera holders (board & committee members), admins, leaders
-  const isAuthorized =
-    profile &&
-    (canAccessCamera(profile.role) || ['admin', 'leader', 'camera_holder'].includes(profile.role))
   const isCameraHolder = profile && canAccessCamera(profile.role)
 
   const { data: result, isLoading } = useQuery({
@@ -122,7 +119,7 @@ export default function MyAssignmentsPage() {
       if (res.error) throw new Error(res.error)
       return res.data || []
     },
-    enabled: !!isAuthorized,
+    enabled: !!profile,
     refetchOnWindowFocus: false,
   })
 
@@ -237,18 +234,6 @@ export default function MyAssignmentsPage() {
   }
 
   if (!profile) return null
-
-  if (!isAuthorized) {
-    return (
-      <div className="flex flex-col items-center justify-center py-20 px-4 text-center">
-        <ShieldAlert className="h-12 w-12 text-red-500 mb-4 animate-bounce" />
-        <h2 className="text-xl font-bold text-white mb-2">Access Denied</h2>
-        <p className="text-sm text-neutral-400 max-w-sm">
-          Only camera holders, club leaders, and administrators can access the shoot assignments panel.
-        </p>
-      </div>
-    )
-  }
 
   const currentDisplayList = activeTab === 'active' ? activeAssignments : completedAssignments
 
@@ -393,9 +378,15 @@ export default function MyAssignmentsPage() {
                 <div className="p-6 pb-4 border-b border-white/5 flex flex-col sm:flex-row justify-between sm:items-center gap-4 bg-white/[0.005]">
                   <div className="space-y-1">
                     <div className="flex items-center gap-2 flex-wrap">
-                      <Badge className="bg-cyan-500/15 text-cyan-300 border border-cyan-500/30 text-[10px] font-bold uppercase tracking-wider capitalize px-2.5 py-0.5 rounded-full">
-                        Your Role: {assignment.role}
-                      </Badge>
+                      {assignment.assignment_type === 'event_volunteer' ? (
+                        <Badge className="bg-purple-500/15 text-purple-300 border border-purple-500/30 text-[10px] font-bold uppercase tracking-wider px-2.5 py-0.5 rounded-full">
+                          Event Volunteer
+                        </Badge>
+                      ) : (
+                        <Badge className="bg-cyan-500/15 text-cyan-300 border border-cyan-500/30 text-[10px] font-bold uppercase tracking-wider capitalize px-2.5 py-0.5 rounded-full">
+                          Shoot Crew
+                        </Badge>
+                      )}
 
                       <Badge
                         className={cn(

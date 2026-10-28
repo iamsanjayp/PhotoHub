@@ -368,13 +368,15 @@ export default function MeetingsPage() {
     )
   }
 
-  // Attendance targets: if invite only, list invited members; otherwise list all core members
+  // Attendance targets: if invite only, list only invited members; otherwise list all core members
   const attendanceTargetMembers = useMemo(() => {
     if (!activeMeeting) return []
-    if (activeMeeting.is_invite_only && activeMeeting.invites?.length) {
-      return activeMeeting.invites.map((inv: any) => inv.profiles).filter(Boolean)
+    if (activeMeeting.is_invite_only) {
+      const invites = activeMeeting.meeting_invites || activeMeeting.invites || []
+      const invitedUserIds = new Set(invites.map((inv: any) => inv.user_id || inv.profiles?.id).filter(Boolean))
+      return allMembers.filter((m: any) => invitedUserIds.has(m.id))
     }
-    // All club core members
+    // All club core members for non-invite-only sessions
     return allMembers.filter((m: any) => isClubCoreMember(m.role))
   }, [activeMeeting, allMembers])
 

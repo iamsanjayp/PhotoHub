@@ -26,6 +26,7 @@ import {
   Lightbulb,
   Clapperboard,
   CalendarDays,
+  Sparkles,
 } from 'lucide-react'
 import {
   Sheet,
@@ -120,6 +121,11 @@ export default function MobileNav({ profile }: { profile: Profile }) {
   ]
 
   const adminMoreItems = [
+    {
+      label: 'Hero Showcase',
+      href: '/admin/hero',
+      icon: Sparkles,
+    },
     {
       label: 'Members',
       href: '/admin/members',

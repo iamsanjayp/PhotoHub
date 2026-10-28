@@ -23,6 +23,7 @@ import {
   ChevronRight,
   LogOut,
   User,
+  Sparkles,
 } from 'lucide-react'
 import { motion } from 'motion/react'
 
@@ -36,6 +37,11 @@ export default function AdminSidebar({ profile, isMobile = false }: { profile: P
       label: 'Overview',
       href: '/admin',
       icon: LayoutDashboard,
+    },
+    {
+      label: 'Hero Showcase',
+      href: '/admin/hero',
+      icon: Sparkles,
     },
     {
       label: 'Members',

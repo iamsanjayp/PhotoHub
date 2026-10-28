@@ -429,16 +429,18 @@ export async function updatePhShoot(
 export async function assignShootCrew(input: {
   shoot_id: string
   user_id: string
-  role: string
+  role?: string
   notes?: string
 }) {
   try {
     const admin = await assertAdminOrBoard()
     const adminClient = await createAdminClient()
 
-    if (!input.shoot_id || !input.user_id || !input.role) {
-      throw new Error('Shoot ID, Member, and Role are required.')
+    if (!input.shoot_id || !input.user_id) {
+      throw new Error('Shoot ID and Member are required.')
     }
+
+    const assignedRole = input.role?.trim() || 'Team Member'
 
     // Fetch the target user's profile
     const { data: targetUser, error: userErr } = await adminClient
@@ -448,9 +450,6 @@ export async function assignShootCrew(input: {
       .single()
 
     if (userErr || !targetUser) throw new Error('Member not found')
-
-    // Note: Any member can be assigned crew, camera, editor, director, etc.
-    // Restriction removed per club specifications.
 
     // Fetch shoot title for notification
     const { data: shoot } = await adminClient
@@ -466,7 +465,7 @@ export async function assignShootCrew(input: {
         {
           shoot_id: input.shoot_id,
           user_id: input.user_id,
-          role: input.role.trim(),
+          role: assignedRole,
           status: 'pending',
           notes: input.notes?.trim() || null,
           assigned_by: admin.id,
@@ -483,7 +482,7 @@ export async function assignShootCrew(input: {
     await adminClient.from('notifications').insert({
       user_id: input.user_id,
       title: 'New Shoot Assignment 🎬',
-      message: `You have been assigned as "${input.role}" for the shoot "${shoot?.title || 'PH Shoot'}". Please accept or decline.`,
+      message: `You have been assigned to the shoot "${shoot?.title || 'PH Shoot'}". Please confirm your participation.`,
       type: 'assignment',
       source_type: 'shoot',
       source_id: input.shoot_id,

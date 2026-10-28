@@ -198,10 +198,10 @@ export default async function EventDetailPage({ params }: PageProps) {
                   <CardHeader className="pb-3">
                     <div className="flex items-center gap-2">
                       <HeartHandshake className="h-4 w-4 text-cyan-400" />
-                      <CardTitle className="text-base font-bold text-white">Event Coordinators & Volunteers ({volunteers.length})</CardTitle>
+                      <CardTitle className="text-base font-bold text-white">Event Volunteers ({volunteers.length})</CardTitle>
                     </div>
                     <CardDescription className="text-xs text-neutral-400">
-                      Team members helping coordinate and execute this event
+                      Team members volunteering for this event
                     </CardDescription>
                   </CardHeader>
                   <CardContent className="pt-0">
@@ -219,7 +219,7 @@ export default async function EventDetailPage({ params }: PageProps) {
                             <p className="text-sm font-semibold text-white truncate">{vol.profiles?.full_name || 'Volunteer'}</p>
                             <div className="flex items-center gap-2 mt-0.5">
                               <Badge variant="outline" className="text-[10px] py-0 px-1.5 border-cyan-500/30 text-cyan-400 bg-cyan-500/10 font-medium">
-                                {vol.role}
+                                Volunteer
                               </Badge>
                               {vol.profiles?.department && (
                                 <span className="text-[11px] text-neutral-400 truncate">

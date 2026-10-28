@@ -2,7 +2,7 @@
 
 import { useState, useMemo } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
-import { getMembers } from '@/actions/members'
+import { getMembers, syncAllMembersFromEmail } from '@/actions/members'
 import { adminAssignRole, deactivateAccount, reactivateAccount } from '@/actions/auth'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
@@ -13,7 +13,7 @@ import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar'
 import { Badge } from '@/components/ui/badge'
 import { Skeleton } from '@/components/ui/skeleton'
 import { format } from 'date-fns'
-import { Users, Search, CheckCircle, Ban, RefreshCw, KeyRound, ShieldAlert, Filter, RotateCcw } from 'lucide-react'
+import { Users, Search, CheckCircle, Ban, RefreshCw, KeyRound, ShieldAlert, Filter, RotateCcw, Sparkles } from 'lucide-react'
 import { toast } from 'sonner'
 import { cn } from '@/lib/utils'
 import { BatchCleanupDialog } from '@/components/admin/batch-cleanup-dialog'
@@ -25,6 +25,22 @@ export default function AdminMembersPage() {
   const [roleFilter, setRoleFilter] = useState<string>('all')
   const [departmentFilter, setDepartmentFilter] = useState<string>('all')
   const [batchFilter, setBatchFilter] = useState<string>('all')
+
+  // Sync student info mutation
+  const syncMutation = useMutation({
+    mutationFn: async () => {
+      const res = await syncAllMembersFromEmail()
+      if (res.error) throw new Error(res.error)
+      return res
+    },
+    onSuccess: (res: any) => {
+      toast.success(`Auto-captured student data! ${res.count || 0} member profiles updated.`)
+      queryClient.invalidateQueries({ queryKey: ['admin-members'] })
+    },
+    onError: (err: any) => {
+      toast.error(err.message || 'Failed to sync member details')
+    },
+  })
 
   // Query members list
   const { data: result, isLoading } = useQuery({
@@ -191,7 +207,19 @@ export default function AdminMembersPage() {
             Promote roles, activate or suspend member accounts, and manage graduate batch storage.
           </p>
         </div>
-        <BatchCleanupDialog />
+        <div className="flex items-center gap-2.5">
+          <Button
+            size="sm"
+            variant="outline"
+            onClick={() => syncMutation.mutate()}
+            disabled={syncMutation.isPending}
+            className="rounded-xl border-cyan-500/30 text-cyan-400 hover:bg-cyan-500/10 hover:text-cyan-300 text-xs gap-1.5 h-9"
+          >
+            <Sparkles className={cn("h-3.5 w-3.5", syncMutation.isPending && "animate-spin")} />
+            {syncMutation.isPending ? 'Syncing...' : 'Auto-Sync Student Info'}
+          </Button>
+          <BatchCleanupDialog />
+        </div>
       </div>
 
       {/* Filter and Search Bar */}

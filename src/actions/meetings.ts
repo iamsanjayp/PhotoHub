@@ -156,13 +156,14 @@ export async function createMeeting(input: {
 
           const emails = (invitedProfiles || []).map((p: any) => p.email).filter(Boolean)
           if (emails.length > 0) {
-            sendMeetingInviteEmail(emails, {
+            const mailRes = await sendMeetingInviteEmail(emails, {
               id: meeting.id,
               title: meeting.title,
               description: meeting.description,
               scheduled_at: meeting.scheduled_at,
               venue: meeting.venue,
-            }).catch((err) => console.error('Automated invite email error:', err))
+            })
+            console.log('[Meeting Invite] Dispatch result:', mailRes)
           }
         } catch (mailErr) {
           console.error('Error fetching member emails for invite:', mailErr)
@@ -267,13 +268,14 @@ export async function updateMeeting(
 
             const emails = (newlyInvitedProfiles || []).map((p: any) => p.email).filter(Boolean)
             if (emails.length > 0) {
-              sendMeetingInviteEmail(emails, {
+              const mailRes = await sendMeetingInviteEmail(emails, {
                 id: updatedMeeting.id,
                 title: updatedMeeting.title,
                 description: updatedMeeting.description,
                 scheduled_at: updatedMeeting.scheduled_at,
                 venue: updatedMeeting.venue,
-              }).catch((err) => console.error('Automated invite email error on update:', err))
+              })
+              console.log('[Meeting Invite Update] Dispatch result:', mailRes)
             }
           } catch (mailErr) {
             console.error('Error fetching member emails for update:', mailErr)

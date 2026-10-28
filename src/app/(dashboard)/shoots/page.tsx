@@ -61,16 +61,6 @@ import {
 import { format } from 'date-fns'
 import { toast } from 'sonner'
 
-const COMMON_ROLES = [
-  'Crew',
-  'Camera',
-  'Editor',
-  'Director',
-  'Lead Photographer',
-  'Lighting / Sound',
-  'Actor / Talent',
-]
-
 export default function ShootsPage() {
   const { profile } = useAuth()
   const queryClient = useQueryClient()
@@ -95,7 +85,6 @@ export default function ShootsPage() {
 
   // Crew assign state
   const [selectedUserId, setSelectedUserId] = useState('')
-  const [crewRole, setCrewRole] = useState('Crew')
   const [crewNotes, setCrewNotes] = useState('')
   const [memberSearch, setMemberSearch] = useState('')
 
@@ -188,28 +177,27 @@ export default function ShootsPage() {
   })
 
   // Assign Crew Mutation
+  // Assign Team Member Mutation
   const assignCrewMutation = useMutation({
     mutationFn: async () => {
-      if (!assigningShoot || !selectedUserId || !crewRole) return
+      if (!assigningShoot || !selectedUserId) return
       const res = await assignShootCrew({
         shoot_id: assigningShoot.id,
         user_id: selectedUserId,
-        role: crewRole,
         notes: crewNotes,
       })
       if (res.error) throw new Error(res.error)
       return res.data
     },
     onSuccess: () => {
-      toast.success('Crew member assigned!')
+      toast.success('Team member assigned to shoot!')
       setAssigningShoot(null)
       setSelectedUserId('')
-      setCrewRole('Director')
       setCrewNotes('')
       queryClient.invalidateQueries({ queryKey: ['ph-shoots'] })
     },
     onError: (err: any) => {
-      toast.error(err.message || 'Failed to assign crew')
+      toast.error(err.message || 'Failed to assign team member')
     },
   })
 
@@ -531,7 +519,7 @@ export default function ShootsPage() {
                   {userAssignment && userAssignment.status === 'pending' && (
                     <div className="p-3 rounded-2xl bg-cyan-500/10 border border-cyan-500/30 flex items-center justify-between gap-2">
                       <div className="text-xs">
-                        <p className="font-bold text-cyan-400">You are assigned as: {userAssignment.role}</p>
+                        <p className="font-bold text-cyan-400">You are assigned to this shoot</p>
                         <p className="text-[11px] text-neutral-400">Please confirm if you can participate.</p>
                       </div>
                       <div className="flex items-center gap-1.5 shrink-0">
@@ -560,11 +548,11 @@ export default function ShootsPage() {
                     </div>
                   )}
 
-                  {/* Crew Roster */}
+                  {/* Team Roster */}
                   <div className="space-y-2">
                     <div className="flex items-center justify-between">
                       <h4 className="text-xs font-bold uppercase tracking-wider text-neutral-400 flex items-center gap-1.5">
-                        <Users className="h-3.5 w-3.5" /> Production Crew ({assignments.length})
+                        <Users className="h-3.5 w-3.5" /> Production Team ({assignments.length})
                       </h4>
                       {isLeader && !isCompleted && (
                         <Button
@@ -573,7 +561,6 @@ export default function ShootsPage() {
                           onClick={() => {
                             setAssigningShoot(shoot)
                             setSelectedUserId('')
-                            setCrewRole('Director')
                             setCrewNotes('')
                           }}
                           className="h-6 text-[11px] rounded-lg text-cyan-400 hover:text-cyan-300 hover:bg-cyan-500/10 font-semibold px-2"
@@ -585,13 +572,12 @@ export default function ShootsPage() {
 
                     {assignments.length === 0 ? (
                       <p className="text-xs text-neutral-500 italic p-3 rounded-2xl bg-neutral-100 dark:bg-white/5 border border-neutral-200 dark:border-white/5 text-center">
-                        No crew members assigned yet.
+                        No team members assigned yet.
                       </p>
                     ) : (
                       <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
                         {assignments.map((assignment: any) => {
                           const mProfile = assignment.profiles
-                          const isCam = /camera|cinematograph|dop|videograph/i.test(assignment.role)
 
                           return (
                             <div
@@ -609,12 +595,11 @@ export default function ShootsPage() {
                                   <p className="text-xs font-bold text-neutral-800 dark:text-neutral-200 truncate">
                                     {mProfile?.full_name || 'Member'}
                                   </p>
-                                  <div className="flex items-center gap-1">
-                                    <span className="text-[10px] font-semibold text-cyan-400 truncate flex items-center gap-1">
-                                      {isCam && <Camera className="h-2.5 w-2.5" />}
-                                      {assignment.role}
+                                  {mProfile?.department && (
+                                    <span className="text-[10px] text-neutral-400 truncate block">
+                                      {mProfile.department} {mProfile.batch ? `(${mProfile.batch})` : ''}
                                     </span>
-                                  </div>
+                                  )}
                                 </div>
                               </div>
 
@@ -929,40 +914,23 @@ export default function ShootsPage() {
         </DialogContent>
       </Dialog>
 
-      {/* Assign Crew Dialog */}
+      {/* Assign Team Member Dialog */}
       <Dialog open={!!assigningShoot} onOpenChange={(open) => !open && setAssigningShoot(null)}>
         <DialogContent className="max-w-xl max-h-[90vh] overflow-y-auto rounded-3xl bg-card border border-neutral-200 dark:border-white/10">
           <DialogHeader>
             <DialogTitle className="text-xl font-bold text-neutral-900 dark:text-white flex items-center gap-2">
               <Users className="h-5 w-5 text-cyan-400" />
-              Assign Crew Member
+              Assign Team Member
             </DialogTitle>
             <DialogDescription className="text-xs text-neutral-500">
-              Assign roles for "{assigningShoot?.title}". Camera roles are strictly restricted to Board and Committee Members.
+              Select a member to join the production team for "{assigningShoot?.title}".
             </DialogDescription>
           </DialogHeader>
 
           <div className="space-y-4 py-2">
-            {/* Role Selection */}
-            <div className="space-y-1.5">
-              <Label className="text-xs font-semibold">Role on Shoot *</Label>
-              <Select value={crewRole} onValueChange={(v) => v && setCrewRole(v)}>
-                <SelectTrigger className="rounded-xl text-xs">
-                  <SelectValue placeholder="Select role" />
-                </SelectTrigger>
-                <SelectContent className="rounded-2xl max-h-56">
-                  {COMMON_ROLES.map((r) => (
-                    <SelectItem key={r} value={r} className="text-xs">
-                      {r}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-
             {/* Member Search & Selection */}
             <div className="space-y-1.5">
-              <Label className="text-xs font-semibold">Select Member (Any member can be assigned Crew, Camera, or Editor) *</Label>
+              <Label className="text-xs font-semibold">Select Member *</Label>
               <Input
                 placeholder="Search member by name or roll number..."
                 value={memberSearch}
@@ -1028,7 +996,7 @@ export default function ShootsPage() {
             </Button>
             <Button
               onClick={() => assignCrewMutation.mutate()}
-              disabled={assignCrewMutation.isPending || !selectedUserId || !crewRole}
+              disabled={assignCrewMutation.isPending || !selectedUserId}
               className="bg-cyan-500 hover:bg-cyan-400 text-neutral-950 font-bold rounded-xl text-xs"
             >
               {assignCrewMutation.isPending ? 'Assigning...' : 'Confirm Assignment'}

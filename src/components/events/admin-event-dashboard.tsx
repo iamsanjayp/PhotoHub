@@ -16,6 +16,7 @@ import {
   selectWinners,
   setEventAttendanceOtp,
   assignEventVolunteer,
+  assignEventVolunteers,
   removeEventVolunteer,
 } from '@/actions/events'
 import {
@@ -23,6 +24,7 @@ import {
   deleteMissedAttendanceRecord
 } from '@/actions/missed-attendance'
 import { exportMissedAttendanceToXlsx } from '@/lib/export-xlsx'
+import { downloadCsv } from '@/lib/export-csv'
 import { format } from 'date-fns'
 import {
   Dialog,
@@ -68,7 +70,8 @@ import {
   ThumbsDown,
   FileText,
   Search,
-  UserCheck
+  UserCheck,
+  Download,
 } from 'lucide-react'
 import { toast } from 'sonner'
 import { cn } from '@/lib/utils'
@@ -108,9 +111,7 @@ export default function AdminEventDashboard({
   // Volunteers State
   const [volunteers, setVolunteers] = useState(initialVolunteers || [])
   const [assignVolunteerModalOpen, setAssignVolunteerModalOpen] = useState(false)
-  const [selectedVolunteerUserId, setSelectedVolunteerUserId] = useState('')
-  const [volunteerRole, setVolunteerRole] = useState('Coordinator')
-  const [volunteerNotes, setVolunteerNotes] = useState('')
+  const [selectedVolunteerUserIds, setSelectedVolunteerUserIds] = useState<string[]>([])
   const [volunteerSearchQuery, setVolunteerSearchQuery] = useState('')
 
   // Feedback & Missed Attendance State
@@ -429,27 +430,68 @@ export default function AdminEventDashboard({
     )
   })
 
+  const toggleVolunteerUser = (userId: string) => {
+    setSelectedVolunteerUserIds((prev) =>
+      prev.includes(userId) ? prev.filter((id) => id !== userId) : [...prev, userId]
+    )
+  }
+
+  const handleSelectAllVisibleVolunteers = () => {
+    const visibleIds = filteredVolunteerMembers.map((m: any) => m.id)
+    const allSelected = visibleIds.every((id: string) => selectedVolunteerUserIds.includes(id))
+    if (allSelected) {
+      setSelectedVolunteerUserIds((prev) => prev.filter((id) => !visibleIds.includes(id)))
+    } else {
+      setSelectedVolunteerUserIds((prev) => Array.from(new Set([...prev, ...visibleIds])))
+    }
+  }
+
   const handleAssignVolunteer = async (e: React.FormEvent) => {
     e.preventDefault()
-    if (!selectedVolunteerUserId) {
-      toast.error('Please select a member to assign as volunteer')
+    if (selectedVolunteerUserIds.length === 0) {
+      toast.error('Please select at least one member to assign as volunteer')
       return
     }
 
     startTransition(async () => {
-      const res = await assignEventVolunteer(event.id, selectedVolunteerUserId, volunteerRole, volunteerNotes)
+      const res = await assignEventVolunteers(event.id, selectedVolunteerUserIds)
       if (res.error) {
         toast.error(res.error)
       } else {
-        toast.success('Volunteer assigned successfully!')
-        setVolunteers((prev) => [...prev, res.data])
+        toast.success(`Assigned ${selectedVolunteerUserIds.length} volunteer(s) successfully!`)
+        if (res.data) {
+          setVolunteers((prev) => {
+            const existingIds = new Set(prev.map((v: any) => v.id))
+            const newRows = (res.data || []).filter((d: any) => !existingIds.has(d.id))
+            return [...prev, ...newRows]
+          })
+        }
         setAssignVolunteerModalOpen(false)
-        setSelectedVolunteerUserId('')
-        setVolunteerRole('Coordinator')
-        setVolunteerNotes('')
+        setSelectedVolunteerUserIds([])
         router.refresh()
       }
     })
+  }
+
+  const handleExportVolunteers = () => {
+    if (volunteers.length === 0) {
+      toast.error('No volunteers to export')
+      return
+    }
+    const headers = ['Full Name', 'Roll Number', 'Email', 'Department', 'Batch', 'Phone', 'Role', 'Status', 'Registered At']
+    const rows = volunteers.map((v: any) => [
+      v.profiles?.full_name || 'Member',
+      v.profiles?.roll_number || '',
+      v.profiles?.email || '',
+      v.profiles?.department || '',
+      v.profiles?.batch || '',
+      v.profiles?.phone || '',
+      'Volunteer',
+      v.status || 'volunteer',
+      v.registered_at ? new Date(v.registered_at).toLocaleString() : '',
+    ])
+    downloadCsv(`Volunteers-${event.title.replace(/[^a-zA-Z0-9]/g, '_')}`, headers, rows)
+    toast.success('Volunteer roster exported to CSV!')
   }
 
   const handleRemoveVolunteer = async (regId: string) => {
@@ -562,13 +604,28 @@ export default function AdminEventDashboard({
                   Assign club members to manage venue setup, participant assistance, crowd control, and stage support.
                 </CardDescription>
               </div>
-              <Button
-                onClick={() => setAssignVolunteerModalOpen(true)}
-                className="bg-cyan-500 hover:bg-cyan-400 text-neutral-950 font-bold rounded-xl text-xs h-9 px-4 gap-2"
-              >
-                <Plus className="h-4 w-4" />
-                Assign Volunteer
-              </Button>
+              <div className="flex items-center gap-2">
+                {volunteers.length > 0 && (
+                  <Button
+                    variant="outline"
+                    onClick={handleExportVolunteers}
+                    className="border-white/10 hover:bg-white/5 text-neutral-300 font-semibold rounded-xl text-xs h-9 px-3 gap-1.5"
+                  >
+                    <Download className="h-3.5 w-3.5 text-cyan-400" />
+                    Export Roster
+                  </Button>
+                )}
+                <Button
+                  onClick={() => {
+                    setSelectedVolunteerUserIds([])
+                    setAssignVolunteerModalOpen(true)
+                  }}
+                  className="bg-cyan-500 hover:bg-cyan-400 text-neutral-950 font-bold rounded-xl text-xs h-9 px-4 gap-2"
+                >
+                  <Plus className="h-4 w-4" />
+                  Assign Volunteers
+                </Button>
+              </div>
             </CardHeader>
 
             <CardContent className="p-0">
@@ -577,7 +634,10 @@ export default function AdminEventDashboard({
                   <Users className="h-10 w-10 text-neutral-600 mx-auto" />
                   <p>No volunteers assigned for this event yet.</p>
                   <Button
-                    onClick={() => setAssignVolunteerModalOpen(true)}
+                    onClick={() => {
+                      setSelectedVolunteerUserIds([])
+                      setAssignVolunteerModalOpen(true)
+                    }}
                     variant="outline"
                     className="border-white/10 text-xs rounded-xl"
                   >
@@ -604,7 +664,7 @@ export default function AdminEventDashboard({
                               {v.profiles?.full_name || 'Member'}
                             </span>
                             <Badge className="bg-cyan-500/15 text-cyan-300 border border-cyan-500/30 text-[10px] font-bold uppercase">
-                              {v.role || 'Volunteer'}
+                              Volunteer
                             </Badge>
                           </div>
                           <p className="text-xs text-neutral-400 mt-0.5">
@@ -1936,48 +1996,36 @@ export default function AdminEventDashboard({
 
       {/* Assign Volunteer Modal */}
       <Dialog open={assignVolunteerModalOpen} onOpenChange={setAssignVolunteerModalOpen}>
-        <DialogContent className="w-[calc(100%-1.5rem)] sm:max-w-md rounded-3xl bg-neutral-950 border border-white/10 p-6">
+        <DialogContent className="w-[calc(100%-1.5rem)] sm:max-w-lg rounded-3xl bg-neutral-950 border border-white/10 p-6">
           <DialogHeader>
             <DialogTitle className="text-xl font-bold text-white flex items-center gap-2">
               <UserCheck className="h-5 w-5 text-cyan-400" />
-              Assign Event Volunteer
+              Assign Event Volunteers
             </DialogTitle>
             <DialogDescription className="text-xs text-neutral-400">
-              Select a club member and designate their coordination role for {event.title}.
+              Select club members to assign as event volunteers for "{event.title}".
             </DialogDescription>
           </DialogHeader>
 
           <form onSubmit={handleAssignVolunteer} className="space-y-4 py-2">
-            <div className="space-y-1.5">
-              <Label className="text-xs font-semibold">Volunteer Role</Label>
-              <Input
-                value={volunteerRole}
-                onChange={(e) => setVolunteerRole(e.target.value)}
-                placeholder="e.g. Coordinator, Photographer, Stage Manager"
-                required
-                className="rounded-xl text-xs sm:text-sm h-10"
-              />
-              <div className="flex flex-wrap gap-1.5 pt-1">
-                {['Coordinator', 'Photographer', 'Crowd Control', 'Stage Support', 'Tech Lead'].map((r) => (
-                  <button
-                    key={r}
-                    type="button"
-                    onClick={() => setVolunteerRole(r)}
-                    className={cn(
-                      'text-[10px] font-semibold px-2.5 py-1 rounded-lg border transition-colors',
-                      volunteerRole === r
-                        ? 'bg-cyan-500/20 text-cyan-300 border-cyan-500/40'
-                        : 'bg-white/5 border-white/5 text-neutral-400 hover:text-white'
-                    )}
-                  >
-                    {r}
-                  </button>
-                ))}
-              </div>
-            </div>
-
             <div className="space-y-2">
-              <Label className="text-xs font-semibold">Select Member</Label>
+              <div className="flex items-center justify-between text-xs">
+                <Label className="font-semibold text-neutral-300">
+                  Select Members ({selectedVolunteerUserIds.length} selected)
+                </Label>
+                {filteredVolunteerMembers.length > 0 && (
+                  <button
+                    type="button"
+                    onClick={handleSelectAllVisibleVolunteers}
+                    className="text-[11px] font-bold text-cyan-400 hover:text-cyan-300 hover:underline"
+                  >
+                    {filteredVolunteerMembers.every((m: any) => selectedVolunteerUserIds.includes(m.id))
+                      ? 'Deselect Filtered'
+                      : 'Select All Filtered'}
+                  </button>
+                )}
+              </div>
+
               <div className="relative">
                 <Search className="absolute left-3 top-2.5 h-4 w-4 text-neutral-400" />
                 <Input
@@ -1988,18 +2036,18 @@ export default function AdminEventDashboard({
                 />
               </div>
 
-              <div className="max-h-48 overflow-y-auto space-y-1.5 pr-1 border border-white/5 rounded-2xl p-2 bg-black/40">
+              <div className="max-h-60 overflow-y-auto space-y-1.5 pr-1 border border-white/5 rounded-2xl p-2 bg-black/40">
                 {filteredVolunteerMembers.length === 0 ? (
                   <p className="text-xs text-neutral-500 text-center py-4">No matching members found</p>
                 ) : (
                   filteredVolunteerMembers.map((member: any) => {
-                    const isSelected = selectedVolunteerUserId === member.id
+                    const isSelected = selectedVolunteerUserIds.includes(member.id)
                     const isAlreadyVolunteer = volunteers.some((v: any) => v.user_id === member.id)
 
                     return (
                       <div
                         key={member.id}
-                        onClick={() => setSelectedVolunteerUserId(member.id)}
+                        onClick={() => toggleVolunteerUser(member.id)}
                         className={cn(
                           'flex items-center justify-between p-2.5 rounded-xl border text-xs cursor-pointer transition-colors',
                           isSelected
@@ -2008,6 +2056,13 @@ export default function AdminEventDashboard({
                         )}
                       >
                         <div className="flex items-center gap-2.5 min-w-0">
+                          <div className="text-cyan-400 shrink-0">
+                            {isSelected ? (
+                              <CheckSquare className="h-4 w-4" />
+                            ) : (
+                              <Square className="h-4 w-4 text-neutral-500" />
+                            )}
+                          </div>
                           <Avatar className="h-7 w-7 border border-white/10 shrink-0">
                             <AvatarImage src={member.avatar_url || ''} />
                             <AvatarFallback className="text-[10px]">
@@ -2025,7 +2080,7 @@ export default function AdminEventDashboard({
 
                         {isAlreadyVolunteer && (
                           <Badge className="bg-amber-500/10 text-amber-400 border border-amber-500/20 text-[9px]">
-                            Assigned
+                            Already Volunteer
                           </Badge>
                         )}
                       </div>
@@ -2046,10 +2101,10 @@ export default function AdminEventDashboard({
               </Button>
               <Button
                 type="submit"
-                disabled={!selectedVolunteerUserId}
+                disabled={selectedVolunteerUserIds.length === 0}
                 className="bg-cyan-500 hover:bg-cyan-400 text-neutral-950 font-bold rounded-xl text-xs px-5"
               >
-                Confirm Volunteer
+                Assign {selectedVolunteerUserIds.length > 0 ? `${selectedVolunteerUserIds.length} ` : ''}Volunteers
               </Button>
             </DialogFooter>
           </form>

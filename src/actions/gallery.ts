@@ -6,14 +6,28 @@ import { getCurrentProfile } from './auth'
 import { revalidatePath } from 'next/cache'
 import { isAdminOrBoard } from '@/lib/constants/roles'
 
+export interface GalleryItem {
+  id: string
+  title: string
+  category: string
+  caption?: string | null
+  url: string
+  thumbnail_url?: string | null
+  author?: string | null
+  author_avatar?: string | null
+  created_at?: string
+  is_seed?: boolean
+}
+
 // Curated default highlight photos if none uploaded yet
-const DEFAULT_GALLERY_ITEMS = [
+const DEFAULT_GALLERY_ITEMS: GalleryItem[] = [
   {
     id: 'default-1',
     title: 'Monochrome Campus Architecture',
     category: 'Architecture',
     caption: 'Bannari Amman Institute of Technology Main Block illuminated during twilight.',
     url: 'https://images.unsplash.com/photo-1513694203232-719a280e022f?auto=format&fit=crop&w=1200&q=80',
+    author: 'PhotoHub Team',
     is_seed: true,
   },
   {
@@ -22,6 +36,7 @@ const DEFAULT_GALLERY_ITEMS = [
     category: 'Portraits',
     caption: 'Capturing candid expressions and natural light dynamics during the club photowalk.',
     url: 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&w=1200&q=80',
+    author: 'PhotoHub Team',
     is_seed: true,
   },
   {
@@ -30,6 +45,7 @@ const DEFAULT_GALLERY_ITEMS = [
     category: 'Events',
     caption: 'High-energy coverage from the annual institute cultural festival.',
     url: 'https://images.unsplash.com/photo-1492684223066-81342ee5ff30?auto=format&fit=crop&w=1200&q=80',
+    author: 'PhotoHub Team',
     is_seed: true,
   },
   {
@@ -38,6 +54,7 @@ const DEFAULT_GALLERY_ITEMS = [
     category: 'Cinematic',
     caption: 'Low-key studio lighting experiment conducted in the PhotoHub media room.',
     url: 'https://images.unsplash.com/photo-1506744038136-46273834b3fb?auto=format&fit=crop&w=1200&q=80',
+    author: 'PhotoHub Team',
     is_seed: true,
   },
   {
@@ -46,6 +63,7 @@ const DEFAULT_GALLERY_ITEMS = [
     category: 'Nature',
     caption: 'Telephoto shot from the Sathyamangalam tiger reserve bird sanctuary photowalk.',
     url: 'https://images.unsplash.com/photo-1448375240586-882707db888b?auto=format&fit=crop&w=1200&q=80',
+    author: 'PhotoHub Team',
     is_seed: true,
   },
   {
@@ -54,6 +72,7 @@ const DEFAULT_GALLERY_ITEMS = [
     category: 'Cinematic',
     caption: 'Long exposure capture showcasing moving lights on the highway boulevard.',
     url: 'https://images.unsplash.com/photo-1509114397022-ed747cca3f65?auto=format&fit=crop&w=1200&q=80',
+    author: 'PhotoHub Team',
     is_seed: true,
   },
 ]
@@ -184,9 +203,58 @@ export async function deleteGalleryItem(postId: string) {
     if (error) throw error
 
     revalidatePath('/')
+    revalidatePath('/admin/hero')
     return { success: true }
   } catch (error: any) {
     console.error('deleteGalleryItem error:', error)
     return { error: error.message || 'Failed to delete gallery item' }
+  }
+}
+
+export async function updateGalleryItem(
+  postId: string,
+  input: {
+    title: string
+    category?: string
+    caption?: string
+    image_url?: string
+  }
+) {
+  try {
+    const profile = await getCurrentProfile()
+    if (!profile || !isAdminOrBoard(profile.role)) {
+      return { error: 'Unauthorized. Only admins can update gallery photos.' }
+    }
+
+    const adminClient = await createAdminClient()
+    const categoryTag = input.category ? `[${input.category.trim()}] ` : ''
+    const fullCaption = `${categoryTag}${input.title.trim()}${input.caption ? ` - ${input.caption.trim()}` : ''}`
+
+    const { error: postErr } = await adminClient
+      .from('posts')
+      .update({
+        caption: fullCaption,
+        updated_at: new Date().toISOString(),
+      })
+      .eq('id', postId)
+
+    if (postErr) throw postErr
+
+    if (input.image_url) {
+      await adminClient
+        .from('post_media')
+        .update({
+          url: input.image_url,
+          thumbnail_url: input.image_url,
+        })
+        .eq('post_id', postId)
+    }
+
+    revalidatePath('/')
+    revalidatePath('/admin/hero')
+    return { success: true }
+  } catch (error: any) {
+    console.error('updateGalleryItem error:', error)
+    return { error: error.message || 'Failed to update gallery photo' }
   }
 }
