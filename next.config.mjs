@@ -6,8 +6,6 @@ const nextConfig = {
     ignoreBuildErrors: true,
   },
   experimental: {
-    cpus: 1,
-    workerThreads: false,
     serverActions: {
       bodySizeLimit: '50mb',
       allowedOrigins: [
