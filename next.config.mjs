@@ -9,6 +9,15 @@ const nextConfig = {
     cpus: 1,
     serverActions: {
       bodySizeLimit: '50mb',
+      allowedOrigins: [
+        'photohub.bitsathy.ac.in',
+        '*.bitsathy.ac.in',
+        'localhost:3000',
+        'localhost:8000',
+        'localhost',
+        '127.0.0.1:3000',
+        '127.0.0.1',
+      ],
     },
     proxyClientMaxBodySize: '50mb',
   },

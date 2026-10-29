@@ -33,8 +33,17 @@ export default function LandingPage() {
   const { data: galleryItems = [] } = useQuery<GalleryItem[]>({
     queryKey: ['hero-gallery'],
     queryFn: async () => {
-      const res = await getGalleryItems()
-      return (res.data || []) as GalleryItem[]
+      try {
+        const res = await fetch('/api/hero/gallery')
+        if (res.ok) {
+          const json = await res.json()
+          if (json.data && json.data.length > 0) return json.data as GalleryItem[]
+        }
+      } catch (e) {
+        console.warn('API fetch /api/hero/gallery failed, falling back:', e)
+      }
+      const saRes = await getGalleryItems()
+      return (saRes.data || []) as GalleryItem[]
     },
   })
 
@@ -42,8 +51,17 @@ export default function LandingPage() {
   const { data: webLinks = [] } = useQuery({
     queryKey: ['hero-web-links'],
     queryFn: async () => {
-      const res = await getWebLinks()
-      return res.data || []
+      try {
+        const res = await fetch('/api/hero/links')
+        if (res.ok) {
+          const json = await res.json()
+          if (json.data && json.data.length > 0) return json.data
+        }
+      } catch (e) {
+        console.warn('API fetch /api/hero/links failed, falling back:', e)
+      }
+      const saRes = await getWebLinks()
+      return saRes.data || []
     },
   })
 

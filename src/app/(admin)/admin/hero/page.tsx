@@ -76,25 +76,48 @@ export default function AdminHeroPage() {
   const { data: galleryItems = [], isLoading: isLoadingGallery } = useQuery({
     queryKey: ['hero-gallery'],
     queryFn: async () => {
-      const res = await getGalleryItems()
-      return res.data || []
+      try {
+        const res = await fetch('/api/hero/gallery')
+        if (res.ok) {
+          const json = await res.json()
+          if (json.data) return json.data
+        }
+      } catch (e) {
+        console.warn('API fetch /api/hero/gallery failed, falling back:', e)
+      }
+      const saRes = await getGalleryItems()
+      return saRes.data || []
     },
   })
 
   // Fetch Web Links
-  const { data: webLinks = [], isLoading: isLoadingLinks } = useQuery({
+  const { data: webLinks = [], isLoading: isLoadingLinks } = useQuery<WebLinkItem[]>({
     queryKey: ['hero-web-links'],
     queryFn: async () => {
-      const res = await getWebLinks()
-      return res.data || []
+      try {
+        const res = await fetch('/api/hero/links')
+        if (res.ok) {
+          const json = await res.json()
+          if (json.data) return json.data
+        }
+      } catch (e) {
+        console.warn('API fetch /api/hero/links failed, falling back:', e)
+      }
+      const saRes = await getWebLinks()
+      return saRes.data || []
     },
   })
 
   // Gallery Mutations
   const deleteGalleryMutation = useMutation({
     mutationFn: async (id: string) => {
-      const res = await deleteGalleryItem(id)
-      if (res.error) throw new Error(res.error)
+      const res = await fetch(`/api/hero/gallery?id=${encodeURIComponent(id)}`, {
+        method: 'DELETE',
+      })
+      const data = await res.json().catch(() => ({}))
+      if (!res.ok || data.error) {
+        throw new Error(data.error || 'Failed to remove photo')
+      }
     },
     onSuccess: () => {
       toast.success('Gallery photo removed')
@@ -140,25 +163,31 @@ export default function AdminHeroPage() {
     try {
       setIsPhotoSubmitting(true)
 
+      const payload = {
+        title: photoTitle.trim(),
+        category: photoCategory,
+        caption: photoCaption.trim(),
+        image_url: photoPreviewUrl,
+        drive_file_id: photoDriveFileId,
+      }
+
       if (editingPhoto && !editingPhoto.is_seed) {
-        const res = await updateGalleryItem(editingPhoto.id, {
-          title: photoTitle.trim(),
-          category: photoCategory,
-          caption: photoCaption.trim(),
-          image_url: photoPreviewUrl,
-          drive_file_id: photoDriveFileId,
+        const res = await fetch('/api/hero/gallery', {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ id: editingPhoto.id, ...payload }),
         })
-        if (res.error) throw new Error(res.error)
+        const data = await res.json().catch(() => ({}))
+        if (!res.ok || data.error) throw new Error(data.error || 'Failed to update photo')
         toast.success('Gallery photo updated!')
       } else {
-        const res = await createGalleryItem({
-          title: photoTitle.trim(),
-          category: photoCategory,
-          caption: photoCaption.trim(),
-          image_url: photoPreviewUrl,
-          drive_file_id: photoDriveFileId,
+        const res = await fetch('/api/hero/gallery', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(payload),
         })
-        if (res.error) throw new Error(res.error)
+        const data = await res.json().catch(() => ({}))
+        if (!res.ok || data.error) throw new Error(data.error || 'Failed to add photo')
         toast.success('Photo added to showcase gallery!')
       }
 
@@ -174,8 +203,11 @@ export default function AdminHeroPage() {
   // Web Link Mutations
   const deleteLinkMutation = useMutation({
     mutationFn: async (id: string) => {
-      const res = await deleteWebLink(id)
-      if (res.error) throw new Error(res.error)
+      const res = await fetch(`/api/hero/links?id=${encodeURIComponent(id)}`, {
+        method: 'DELETE',
+      })
+      const data = await res.json().catch(() => ({}))
+      if (!res.ok || data.error) throw new Error(data.error || 'Failed to remove web link')
     },
     onSuccess: () => {
       toast.success('Web link removed')
@@ -188,24 +220,30 @@ export default function AdminHeroPage() {
 
   const linkMutation = useMutation({
     mutationFn: async () => {
+      const payload = {
+        title: linkTitle,
+        description: linkDescription,
+        url: linkUrl,
+        badge: linkBadge,
+        accent: linkAccent,
+      }
+
       if (editingLink) {
-        const res = await updateWebLink(editingLink.id, {
-          title: linkTitle,
-          description: linkDescription,
-          url: linkUrl,
-          badge: linkBadge,
-          accent: linkAccent,
+        const res = await fetch('/api/hero/links', {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ id: editingLink.id, ...payload }),
         })
-        if (res.error) throw new Error(res.error)
+        const data = await res.json().catch(() => ({}))
+        if (!res.ok || data.error) throw new Error(data.error || 'Failed to update web link')
       } else {
-        const res = await createWebLink({
-          title: linkTitle,
-          description: linkDescription,
-          url: linkUrl,
-          badge: linkBadge,
-          accent: linkAccent,
+        const res = await fetch('/api/hero/links', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(payload),
         })
-        if (res.error) throw new Error(res.error)
+        const data = await res.json().catch(() => ({}))
+        if (!res.ok || data.error) throw new Error(data.error || 'Failed to save web link')
       }
     },
     onSuccess: () => {

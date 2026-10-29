@@ -17,7 +17,7 @@ export interface WebLinkItem {
   created_at?: string
 }
 
-export const DEFAULT_WEB_LINKS: WebLinkItem[] = [
+const DEFAULT_WEB_LINKS: WebLinkItem[] = [
   {
     id: 'link-1',
     title: 'BIT Sathy Official Portal',

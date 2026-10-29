@@ -1,7 +1,6 @@
 import { drive, type drive_v3 } from '@googleapis/drive'
 import { GoogleAuth } from 'google-auth-library'
 import { Readable } from 'stream'
-import sharp from 'sharp'
 import path from 'path'
 
 function cleanEnvValue(val: string | undefined): string {
@@ -83,6 +82,9 @@ export async function optimizeMediaBuffer(
   }
 
   try {
+    const sharpModule = await import('sharp')
+    const sharp = (sharpModule as any).default || sharpModule
+
     const ext = path.extname(originalFilename)
     const baseName = path.basename(originalFilename, ext)
     const optimizedFilename = `${baseName}.webp`
