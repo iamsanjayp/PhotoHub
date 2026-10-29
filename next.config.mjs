@@ -7,6 +7,7 @@ const nextConfig = {
   },
   experimental: {
     cpus: 1,
+    workerThreads: false,
     serverActions: {
       bodySizeLimit: '50mb',
       allowedOrigins: [
@@ -49,6 +50,13 @@ const nextConfig = {
         destination: `${internalSupabaseUrl}/storage/v1/:path*`,
       },
     ];
+  },
+  webpack: (config, { dev }) => {
+    if (!dev) {
+      config.cache = false;
+      config.parallelism = 1;
+    }
+    return config;
   },
 };
 
