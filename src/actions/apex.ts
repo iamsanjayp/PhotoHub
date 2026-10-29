@@ -978,7 +978,70 @@ export async function getMyAssignments() {
       .order('created_at', { ascending: false })
 
     if (error) throw error
-    return { data: data || [] }
+
+    // Also fetch event volunteer assignments for this user
+    const { data: volunteerRows } = await adminClient
+      .from('event_registrations')
+      .select(`
+        id,
+        event_id,
+        user_id,
+        status,
+        attended,
+        registered_at,
+        events (
+          id,
+          title,
+          description,
+          venue,
+          start_date,
+          end_date,
+          event_type,
+          banner_url
+        )
+      `)
+      .eq('user_id', profile.id)
+      .ilike('status', 'volunteer%')
+      .order('registered_at', { ascending: false })
+
+    const formattedVolunteers = (volunteerRows || [])
+      .filter((v: any) => !!v.events)
+      .map((v: any) => ({
+        id: v.id,
+        user_id: v.user_id,
+        role: 'Event Volunteer',
+        status: 'accepted',
+        assignment_type: 'event_volunteer',
+        created_at: v.registered_at,
+        apex_requests: {
+          id: v.events.id,
+          event_name: v.events.title,
+          venue: v.events.venue,
+          event_date: v.events.start_date,
+          event_time: v.events.start_date
+            ? new Date(v.events.start_date).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+            : null,
+          end_time: v.events.end_date
+            ? new Date(v.events.end_date).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+            : null,
+          status: new Date(v.events.end_date) < new Date() ? 'completed' : 'assigned',
+          coverage_type: 'Event Volunteer',
+          notes: v.events.description,
+          is_event_volunteer: true,
+          event_id: v.events.id,
+          banner_url: v.events.banner_url,
+          event_type: v.events.event_type,
+          apex_media: [],
+          equipment_assignments: [],
+          apex_assignments: [],
+        },
+        equipment: null,
+        apex_attendance: v.attended ? [{ id: v.id, user_id: v.user_id, attended: true }] : [],
+      }))
+
+    const combined = [...(data || []), ...formattedVolunteers]
+
+    return { data: combined }
   } catch (error: any) {
     console.error('Error in getMyAssignments:', error)
     return { error: error.message || 'Failed to fetch assignments' }

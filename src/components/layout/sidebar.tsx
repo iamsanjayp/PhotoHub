@@ -95,7 +95,7 @@ export default function Sidebar({ profile, isMobile = false }: { profile: Profil
       label: 'My Assignments',
       href: '/my-assignments',
       icon: ClipboardList,
-      roles: coreRoles,
+      roles: allRoles,
     },
     {
       label: 'Notifications',

@@ -103,7 +103,7 @@ export default function MobileNav({ profile }: { profile: Profile }) {
       label: 'My Assignments',
       href: '/my-assignments',
       icon: ClipboardList,
-      roles: coreRoles,
+      roles: allRoles,
     },
     {
       label: 'Profile',

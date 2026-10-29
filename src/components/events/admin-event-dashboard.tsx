@@ -17,6 +17,7 @@ import {
   setEventAttendanceOtp,
   assignEventVolunteer,
   assignEventVolunteers,
+  bulkImportEventVolunteersByEmail,
   removeEventVolunteer,
 } from '@/actions/events'
 import {
@@ -72,6 +73,8 @@ import {
   Search,
   UserCheck,
   Download,
+  Mail,
+  AlertCircle,
 } from 'lucide-react'
 import { toast } from 'sonner'
 import { cn } from '@/lib/utils'
@@ -115,6 +118,10 @@ export default function AdminEventDashboard({
   const [assignVolunteerModalOpen, setAssignVolunteerModalOpen] = useState(false)
   const [selectedVolunteerUserIds, setSelectedVolunteerUserIds] = useState<string[]>([])
   const [volunteerSearchQuery, setVolunteerSearchQuery] = useState('')
+  const [bulkImportModalOpen, setBulkImportModalOpen] = useState(false)
+  const [bulkEmailInput, setBulkEmailInput] = useState('')
+  const [bulkImportPending, setBulkImportPending] = useState(false)
+  const [bulkImportNotFound, setBulkImportNotFound] = useState<string[]>([])
 
   // Feedback & Missed Attendance State
   const [feedbacks, setFeedbacks] = useState(initialFeedbacks || [])
@@ -477,6 +484,55 @@ export default function AdminEventDashboard({
     })
   }
 
+  const handleBulkImportVolunteers = async (e: React.FormEvent) => {
+    e.preventDefault()
+    if (!bulkEmailInput.trim()) {
+      toast.error('Please enter student emails')
+      return
+    }
+
+    setBulkImportPending(true)
+    setBulkImportNotFound([])
+
+    try {
+      const res = await bulkImportEventVolunteersByEmail(event.id, bulkEmailInput)
+      if (res.error) {
+        toast.error(res.error)
+        if (res.notFoundEmails) {
+          setBulkImportNotFound(res.notFoundEmails)
+        }
+      } else {
+        toast.success(`Successfully assigned ${res.count || 0} volunteer(s)!`)
+        if (res.data) {
+          setVolunteers((prev) => {
+            const existingIds = new Set(prev.map((v: any) => v.id))
+            const newRows = (res.data || []).filter((d: any) => !existingIds.has(d.id))
+            return [...prev, ...newRows]
+          })
+        }
+        if (res.assignedProfiles && res.assignedProfiles.length > 0) {
+          const assignedUserIds = res.assignedProfiles.map((p: any) => p.id)
+          setRegistrations((prev) => prev.filter((r: any) => !assignedUserIds.includes(r.user_id)))
+        }
+        if (res.notFoundEmails && res.notFoundEmails.length > 0) {
+          setBulkImportNotFound(res.notFoundEmails)
+          toast.warning(`${res.notFoundEmails.length} email(s) could not be matched.`)
+        } else {
+          setBulkImportModalOpen(false)
+          setBulkEmailInput('')
+        }
+        router.refresh()
+      }
+    } catch (err: any) {
+      toast.error(err.message || 'Failed to bulk import volunteers')
+    } finally {
+      setBulkImportPending(false)
+    }
+  }
+
+  const detectedBulkEmails = (bulkEmailInput.match(/[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}/g) || [])
+  const detectedEmailCount = Array.from(new Set(detectedBulkEmails.map((e) => e.toLowerCase()))).length
+
   const handleExportVolunteers = () => {
     if (volunteers.length === 0) {
       toast.error('No volunteers to export')
@@ -608,7 +664,7 @@ export default function AdminEventDashboard({
                   Assign club members to manage venue setup, participant assistance, crowd control, and stage support.
                 </CardDescription>
               </div>
-              <div className="flex items-center gap-2">
+              <div className="flex items-center gap-2 flex-wrap">
                 {volunteers.length > 0 && (
                   <Button
                     variant="outline"
@@ -619,6 +675,18 @@ export default function AdminEventDashboard({
                     Export Roster
                   </Button>
                 )}
+                <Button
+                  variant="outline"
+                  onClick={() => {
+                    setBulkImportModalOpen(true)
+                    setBulkEmailInput('')
+                    setBulkImportNotFound([])
+                  }}
+                  className="border-cyan-500/30 hover:border-cyan-500/50 bg-cyan-500/10 hover:bg-cyan-500/20 text-cyan-300 font-bold rounded-xl text-xs h-9 px-3.5 gap-2"
+                >
+                  <Mail className="h-4 w-4 text-cyan-400" />
+                  Bulk Import (Email)
+                </Button>
                 <Button
                   onClick={() => {
                     setSelectedVolunteerUserIds([])
@@ -637,16 +705,30 @@ export default function AdminEventDashboard({
                 <div className="py-16 text-center text-sm text-neutral-500 border-t border-white/5 space-y-3">
                   <Users className="h-10 w-10 text-neutral-600 mx-auto" />
                   <p>No volunteers assigned for this event yet.</p>
-                  <Button
-                    onClick={() => {
-                      setSelectedVolunteerUserIds([])
-                      setAssignVolunteerModalOpen(true)
-                    }}
-                    variant="outline"
-                    className="border-white/10 text-xs rounded-xl"
-                  >
-                    <Plus className="h-3.5 w-3.5 mr-1 text-cyan-400" /> Assign First Volunteer
-                  </Button>
+                  <div className="flex items-center justify-center gap-2 pt-2 flex-wrap">
+                    <Button
+                      onClick={() => {
+                        setSelectedVolunteerUserIds([])
+                        setAssignVolunteerModalOpen(true)
+                      }}
+                      variant="outline"
+                      className="border-white/10 text-xs rounded-xl"
+                    >
+                      <Plus className="h-3.5 w-3.5 mr-1 text-cyan-400" />
+                      Select Members
+                    </Button>
+                    <Button
+                      onClick={() => {
+                        setBulkImportModalOpen(true)
+                        setBulkEmailInput('')
+                        setBulkImportNotFound([])
+                      }}
+                      className="bg-cyan-500 hover:bg-cyan-400 text-black font-bold text-xs rounded-xl"
+                    >
+                      <Mail className="h-3.5 w-3.5 mr-1" />
+                      Bulk Import via Email
+                    </Button>
+                  </div>
                 </div>
               ) : (
                 <div className="divide-y divide-white/5 border-t border-white/5">
@@ -2109,6 +2191,97 @@ export default function AdminEventDashboard({
                 className="bg-cyan-500 hover:bg-cyan-400 text-neutral-950 font-bold rounded-xl text-xs px-5"
               >
                 Assign {selectedVolunteerUserIds.length > 0 ? `${selectedVolunteerUserIds.length} ` : ''}Volunteers
+              </Button>
+            </DialogFooter>
+          </form>
+        </DialogContent>
+      </Dialog>
+
+      {/* Bulk Import Volunteers via Email Modal */}
+      <Dialog open={bulkImportModalOpen} onOpenChange={setBulkImportModalOpen}>
+        <DialogContent className="w-[calc(100%-1.5rem)] sm:max-w-lg rounded-3xl bg-neutral-950 border border-white/10 p-6">
+          <DialogHeader>
+            <DialogTitle className="text-xl font-bold text-white flex items-center gap-2">
+              <Mail className="h-5 w-5 text-cyan-400" />
+              Bulk Import Volunteers by Email
+            </DialogTitle>
+            <DialogDescription className="text-xs text-neutral-400">
+              Paste student email addresses (separated by commas, spaces, or newlines) to quickly assign them as volunteers for "{event.title}".
+            </DialogDescription>
+          </DialogHeader>
+
+          <form onSubmit={handleBulkImportVolunteers} className="space-y-4 py-2">
+            <div className="space-y-2">
+              <div className="flex items-center justify-between text-xs">
+                <Label className="font-semibold text-neutral-300">
+                  Student Emails
+                </Label>
+                {detectedEmailCount > 0 && (
+                  <Badge className="bg-cyan-500/15 text-cyan-300 border border-cyan-500/30 text-[10px] font-bold">
+                    {detectedEmailCount} unique email{detectedEmailCount !== 1 ? 's' : ''} detected
+                  </Badge>
+                )}
+              </div>
+
+              <Textarea
+                value={bulkEmailInput}
+                onChange={(e) => {
+                  setBulkEmailInput(e.target.value)
+                  if (bulkImportNotFound.length > 0) setBulkImportNotFound([])
+                }}
+                placeholder="sanjayp.cs24@bitsathy.ac.in&#10;pragathip.mz24@bitsathy.ac.in&#10;naveenk.it23@bitsathy.ac.in"
+                rows={6}
+                required
+                className="font-mono text-xs rounded-2xl bg-neutral-900/60 border-white/10 focus:border-cyan-500/50 resize-y placeholder:text-neutral-600"
+              />
+
+              <p className="text-[11px] text-neutral-500 leading-relaxed">
+                Tip: You can paste a comma-separated list or newline-separated column copied straight from an Excel sheet. BIT college emails (@bitsathy.ac.in) are automatically parsed.
+              </p>
+
+              {bulkImportNotFound.length > 0 && (
+                <div className="p-3 rounded-xl border border-amber-500/30 bg-amber-500/10 text-amber-300 space-y-1.5 text-xs">
+                  <div className="flex items-center gap-1.5 font-bold">
+                    <AlertCircle className="h-4 w-4 shrink-0 text-amber-400" />
+                    <span>Unmatched Emails ({bulkImportNotFound.length}):</span>
+                  </div>
+                  <div className="max-h-24 overflow-y-auto font-mono text-[11px] space-y-0.5 text-amber-200/90 pl-5">
+                    {bulkImportNotFound.map((email) => (
+                      <div key={email}>• {email}</div>
+                    ))}
+                  </div>
+                  <p className="text-[10px] text-amber-300/80 pt-1">
+                    These students could not be identified or created. Please verify their email spelling.
+                  </p>
+                </div>
+              )}
+            </div>
+
+            <DialogFooter className="gap-2 sm:gap-0 pt-2">
+              <Button
+                type="button"
+                variant="ghost"
+                onClick={() => setBulkImportModalOpen(false)}
+                className="rounded-xl text-xs"
+              >
+                Cancel
+              </Button>
+              <Button
+                type="submit"
+                disabled={bulkImportPending || detectedEmailCount === 0}
+                className="bg-cyan-500 hover:bg-cyan-400 text-neutral-950 font-bold rounded-xl text-xs px-5 gap-2"
+              >
+                {bulkImportPending ? (
+                  <>
+                    <Loader2 className="h-4 w-4 animate-spin" />
+                    Importing...
+                  </>
+                ) : (
+                  <>
+                    <Mail className="h-4 w-4" />
+                    Import {detectedEmailCount > 0 ? `${detectedEmailCount} ` : ''}Volunteers
+                  </>
+                )}
               </Button>
             </DialogFooter>
           </form>

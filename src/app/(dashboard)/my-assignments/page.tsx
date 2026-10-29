@@ -1,6 +1,7 @@
 'use client'
 
 import { useState, useTransition } from 'react'
+import Link from 'next/link'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import {
   getMyAssignments,
@@ -48,6 +49,7 @@ import {
   GraduationCap,
   Plus,
   UserPlus,
+  ExternalLink,
 } from 'lucide-react'
 import { toast } from 'sonner'
 import { cn } from '@/lib/utils'
@@ -244,14 +246,14 @@ export default function MyAssignmentsPage() {
           <div className="flex items-center gap-2">
             <h1 className="text-3xl font-extrabold tracking-tight text-white flex items-center gap-2">
               <ClipboardList className="h-7 w-7 text-cyan-400" />
-              My Shoot Assignments
+              My Assignments
             </h1>
             <Badge className="bg-cyan-500/10 text-cyan-400 border border-cyan-500/20 text-xs px-2.5 py-0.5 rounded-full">
               {activeAssignments.length} Active
             </Badge>
           </div>
           <p className="text-neutral-400 text-sm">
-            Manage your campus event coverage assignments, view shoot camera gear, claim missed college attendance, and upload deliverables.
+            Manage your campus shoot coverage tasks, camera gear allocations, and assigned event volunteer duties.
           </p>
         </div>
 
@@ -329,6 +331,7 @@ export default function MyAssignmentsPage() {
             const isRejected = assignment.status === 'rejected'
 
             const isShootConcluded = req.status === 'completed' || req.status === 'delivered'
+            const isEventVolunteer = assignment.assignment_type === 'event_volunteer'
 
             // Shoot-level gear allocation: collect all allocated equipment items for this shoot
             const shootGearList = (() => {
@@ -377,9 +380,15 @@ export default function MyAssignmentsPage() {
                 <div className="p-6 pb-4 border-b border-white/5 flex flex-col sm:flex-row justify-between sm:items-center gap-4 bg-white/[0.005]">
                   <div className="space-y-1">
                     <div className="flex items-center gap-2 flex-wrap">
-                      <Badge className="bg-cyan-500/15 text-cyan-300 border border-cyan-500/30 text-[10px] font-bold uppercase tracking-wider capitalize px-2.5 py-0.5 rounded-full">
-                        Shoot Crew
-                      </Badge>
+                      {isEventVolunteer ? (
+                        <Badge className="bg-purple-500/15 text-purple-300 border border-purple-500/30 text-[10px] font-bold uppercase tracking-wider px-2.5 py-0.5 rounded-full">
+                          Event Volunteer
+                        </Badge>
+                      ) : (
+                        <Badge className="bg-cyan-500/15 text-cyan-300 border border-cyan-500/30 text-[10px] font-bold uppercase tracking-wider capitalize px-2.5 py-0.5 rounded-full">
+                          Shoot Crew
+                        </Badge>
+                      )}
 
                       <Badge
                         className={cn(
@@ -396,12 +405,20 @@ export default function MyAssignmentsPage() {
                         variant="outline"
                         className={cn(
                           'text-[9px] uppercase tracking-wider border font-bold',
-                          req.status === 'ongoing' && 'border-purple-500/30 bg-purple-500/10 text-purple-400',
-                          req.status === 'assigned' && 'border-blue-500/30 bg-blue-500/10 text-blue-400',
-                          ['completed', 'delivered'].includes(req.status) && 'border-emerald-500/30 bg-emerald-500/10 text-emerald-400'
+                          isEventVolunteer
+                            ? req.status === 'completed'
+                              ? 'border-emerald-500/30 bg-emerald-500/10 text-emerald-400'
+                              : 'border-purple-500/30 bg-purple-500/10 text-purple-400'
+                            : req.status === 'ongoing'
+                              ? 'border-purple-500/30 bg-purple-500/10 text-purple-400'
+                              : req.status === 'assigned'
+                                ? 'border-blue-500/30 bg-blue-500/10 text-blue-400'
+                                : ['completed', 'delivered'].includes(req.status)
+                                  ? 'border-emerald-500/30 bg-emerald-500/10 text-emerald-400'
+                                  : 'border-white/10'
                         )}
                       >
-                        Shoot: {req.status}
+                        {isEventVolunteer ? `Event: ${req.status === 'completed' ? 'Concluded' : 'Upcoming'}` : `Shoot: ${req.status}`}
                       </Badge>
                     </div>
 
@@ -409,7 +426,19 @@ export default function MyAssignmentsPage() {
                   </div>
 
                   <div className="flex items-center gap-2 flex-wrap">
-                    {['completed', 'delivered'].includes(req.status) ? (
+                    {isEventVolunteer ? (
+                      <Button
+                        asChild
+                        size="sm"
+                        variant="outline"
+                        className="border-white/10 hover:bg-white/5 text-neutral-300 hover:text-white font-bold rounded-xl h-8 px-3 text-xs gap-1.5"
+                      >
+                        <Link href={`/events/${req.event_id}`}>
+                          <ExternalLink className="h-3.5 w-3.5 text-cyan-400" />
+                          View Event
+                        </Link>
+                      </Button>
+                    ) : ['completed', 'delivered'].includes(req.status) ? (
                       <Badge className="bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 text-[10px] font-bold px-3 py-1 rounded-full gap-1.5 flex items-center">
                         <CheckCircle className="h-3.5 w-3.5" />
                         Shoot Completed (+25 pts)
@@ -435,7 +464,7 @@ export default function MyAssignmentsPage() {
                       </Button>
                     )}
 
-                    {isPendingResponse && (
+                    {!isEventVolunteer && isPendingResponse && (
                       <div className="flex gap-2">
                         <Button
                           size="sm"
@@ -465,7 +494,76 @@ export default function MyAssignmentsPage() {
 
                 {/* Details */}
                 <CardContent className="p-6 space-y-6">
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                  {isEventVolunteer ? (
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                      {/* Left: Event Details */}
+                      <div className="space-y-3.5 text-xs text-neutral-400">
+                        <div className="flex items-center gap-2">
+                          <Calendar className="h-4 w-4 text-cyan-400 shrink-0" />
+                          <span className="font-semibold text-neutral-200">
+                            {req.event_date ? format(new Date(req.event_date), 'EEEE, dd MMMM yyyy') : 'Date scheduled'}
+                          </span>
+                        </div>
+
+                        {req.event_time && (
+                          <div className="flex items-center gap-2">
+                            <Clock className="h-4 w-4 text-neutral-500 shrink-0" />
+                            <span>
+                              Timing: {req.event_time} {req.end_time ? ` - ${req.end_time}` : ''}
+                            </span>
+                          </div>
+                        )}
+
+                        {req.venue && (
+                          <div className="flex items-center gap-2">
+                            <MapPin className="h-4 w-4 text-neutral-500 shrink-0" />
+                            <span>Venue: {req.venue}</span>
+                          </div>
+                        )}
+
+                        {req.event_type && (
+                          <div className="flex items-center gap-2">
+                            <span className="text-[11px] text-neutral-400">Event Type:</span>
+                            <Badge className="bg-cyan-500/10 text-cyan-400 border border-cyan-500/20 text-[10px] capitalize">
+                              {req.event_type}
+                            </Badge>
+                          </div>
+                        )}
+
+                        {req.notes && (
+                          <div className="pt-2 text-xs text-neutral-400 bg-white/[0.01] p-3 rounded-xl border border-white/5 whitespace-pre-wrap">
+                            <span className="font-semibold text-neutral-300 block mb-1">Event Description & Notes:</span>
+                            {req.notes}
+                          </div>
+                        )}
+                      </div>
+
+                      {/* Right: Volunteer Guidance */}
+                      <div className="space-y-4 border-t md:border-t-0 md:border-l border-white/5 pt-4 md:pt-0 md:pl-6">
+                        <div className="p-4 bg-purple-500/5 border border-purple-500/20 rounded-2xl space-y-2">
+                          <div className="flex items-center gap-2 text-purple-300 font-bold text-xs">
+                            <Users className="h-4 w-4 text-purple-400" />
+                            <span>Assigned Event Volunteer</span>
+                          </div>
+                          <p className="text-[11px] text-neutral-400 leading-relaxed">
+                            You are designated as an official volunteer coordinator for this event. Please coordinate with the core board organizers on the event day for registration desk, crowd management, and logistics support.
+                          </p>
+                        </div>
+
+                        <Button
+                          asChild
+                          className="w-full bg-gradient-to-r from-cyan-500 to-teal-500 hover:opacity-90 text-neutral-950 font-bold rounded-xl h-10 text-xs gap-2"
+                        >
+                          <Link href={`/events/${req.event_id}`}>
+                            <ExternalLink className="h-4 w-4" />
+                            Open Event Hub & Details
+                          </Link>
+                        </Button>
+                      </div>
+                    </div>
+                  ) : (
+                    <>
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                     {/* Left: Metadata & Shared Gear */}
                     <div className="space-y-3.5 text-xs text-neutral-400">
                       <div className="flex items-center gap-2">
@@ -738,6 +836,8 @@ export default function MyAssignmentsPage() {
                         ))}
                       </div>
                     </div>
+                  )}
+                    </>
                   )}
                 </CardContent>
               </Card>

@@ -39,7 +39,7 @@ export default async function DashboardPage() {
     getEvents({ status: 'upcoming' }),
     getAnnouncements(false),
     getUserPoints(profile.id),
-    (canAccessCamera(profile.role) || ['admin', 'leader', 'camera_holder'].includes(profile.role)) ? getMyAssignments() : Promise.resolve({ data: [] })
+    getMyAssignments()
   ])
 
   const upcomingEvents = (eventsResult.data || []).slice(0, 3)

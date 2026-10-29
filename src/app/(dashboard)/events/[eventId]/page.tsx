@@ -281,13 +281,30 @@ export default async function EventDetailPage({ params }: PageProps) {
             </CardHeader>
             <CardContent className="space-y-6">
               
-              <RegistrationButton
-                eventId={event.id}
-                initialIsRegistered={event.is_registered || false}
-                registrationCount={event.registration_count || 0}
-                maxParticipants={event.max_participants}
-                deadline={event.registration_deadline}
-              />
+              {event.is_volunteer ? (
+                <div className="p-4 rounded-2xl bg-purple-500/10 border border-purple-500/30 text-purple-300 space-y-2">
+                  <div className="flex items-center gap-2 font-bold text-xs text-white">
+                    <HeartHandshake className="h-4 w-4 text-purple-400" />
+                    <span>You are an Assigned Volunteer</span>
+                  </div>
+                  <p className="text-[11px] text-neutral-400 leading-relaxed">
+                    You are volunteering for this event. Your assignment is tracked under My Assignments.
+                  </p>
+                  <Button asChild size="sm" variant="outline" className="w-full border-purple-500/30 hover:bg-purple-500/20 text-purple-200 text-xs font-bold rounded-xl h-9 mt-1">
+                    <Link href="/my-assignments">
+                      View in My Assignments
+                    </Link>
+                  </Button>
+                </div>
+              ) : (
+                <RegistrationButton
+                  eventId={event.id}
+                  initialIsRegistered={event.is_registered || false}
+                  registrationCount={event.registration_count || 0}
+                  maxParticipants={event.max_participants}
+                  deadline={event.registration_deadline}
+                />
+              )}
 
               {event.external_link && (
                 <Button asChild className="w-full bg-[#18181B] border border-white/10 hover:bg-neutral-800 text-white font-bold text-xs rounded-xl h-10 gap-1.5 transition-all mt-2">

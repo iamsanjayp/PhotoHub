@@ -8,6 +8,7 @@ import { revalidatePath } from 'next/cache'
 
 import { isAdminOrBoard, isClubCoreMember } from '@/lib/constants/roles'
 import { addMissedAttendanceRecord, getMissedAttendanceRecords } from './missed-attendance'
+import { parseStudentEmail } from '@/lib/student-email'
 
 
 // Helper for role checks
@@ -221,18 +222,20 @@ export async function getEvents(filters?: {
     // Fetch registration counts and user's registration status
     const eventsWithMeta = await Promise.all(
       visibleEvents.map(async (event: any) => {
-        // Fetch count
+        // Fetch count (excluding volunteers)
         const { count } = await client
           .from('event_registrations')
           .select('*', { count: 'exact', head: true })
           .eq('event_id', event.id)
+          .not('status', 'ilike', 'volunteer%')
 
-        // Check if current user is registered
+        // Check if current user is registered as attendee (excluding volunteers)
         const { data: reg } = await client
           .from('event_registrations')
           .select('id, status')
           .eq('event_id', event.id)
           .eq('user_id', profile.id)
+          .not('status', 'ilike', 'volunteer%')
           .maybeSingle()
 
         return {
@@ -285,18 +288,29 @@ export async function getEventById(eventId: string) {
       }
     }
 
-    // Registration count
+    // Registration count (excluding volunteers)
     const { count } = await supabase
       .from('event_registrations')
       .select('*', { count: 'exact', head: true })
       .eq('event_id', eventId)
+      .not('status', 'ilike', 'volunteer%')
 
-    // User registration status
+    // User participant registration status (excluding volunteers)
     const { data: reg } = await supabase
       .from('event_registrations')
       .select('*')
       .eq('event_id', eventId)
       .eq('user_id', profile.id)
+      .not('status', 'ilike', 'volunteer%')
+      .maybeSingle()
+
+    // User volunteer assignment status
+    const { data: volReg } = await supabase
+      .from('event_registrations')
+      .select('id, status, attended')
+      .eq('event_id', eventId)
+      .eq('user_id', profile.id)
+      .ilike('status', 'volunteer%')
       .maybeSingle()
 
     return {
@@ -304,7 +318,9 @@ export async function getEventById(eventId: string) {
         ...event,
         registration_count: count || 0,
         is_registered: !!reg,
-        registration_details: reg || null
+        registration_details: reg || null,
+        is_volunteer: !!volReg,
+        volunteer_details: volReg || null,
       }
     }
   } catch (error: any) {
@@ -469,6 +485,7 @@ export async function unregisterFromEvent(eventId: string) {
       .delete()
       .eq('event_id', eventId)
       .eq('user_id', profile.id)
+      .not('status', 'ilike', 'volunteer%')
 
     if (error) throw error
 
@@ -491,12 +508,18 @@ export async function getEventRegistrations(eventId: string) {
       .from('event_registrations')
       .select('*, profiles(*)')
       .eq('event_id', eventId)
-      .not('status', 'like', 'volunteer%')
+      .not('status', 'ilike', 'volunteer%')
       .order('registered_at', { ascending: true })
 
     if (error) throw error
 
-    return { data }
+    // Safeguard: Ensure no volunteer status leaks into participants list
+    const participants = (data || []).filter((r: any) => {
+      const s = (r.status || '').toLowerCase()
+      return !s.startsWith('volunteer') && s !== 'volunteer'
+    })
+
+    return { data: participants }
   } catch (error: any) {
     console.error('Error in getEventRegistrations:', error)
     return { error: error.message || 'Failed to fetch registrations' }
@@ -610,17 +633,19 @@ export async function getEventAnalytics(eventId: string) {
     await assertAdminOrLeader()
     const supabase = await createAdminClient()
 
-    // Registrations count
+    // Registrations count (excluding volunteers)
     const { count: registered } = await supabase
       .from('event_registrations')
       .select('*', { count: 'exact', head: true })
       .eq('event_id', eventId)
+      .not('status', 'ilike', 'volunteer%')
 
-    // Attendance count
+    // Attendance count (excluding volunteers)
     const { count: attended } = await supabase
       .from('event_registrations')
       .select('*', { count: 'exact', head: true })
       .eq('event_id', eventId)
+      .not('status', 'ilike', 'volunteer%')
       .eq('attended', true)
 
     // Submissions count
@@ -663,9 +688,15 @@ export async function getEventExportData(eventId: string) {
       .from('event_registrations')
       .select('*, profiles(*)')
       .eq('event_id', eventId)
+      .not('status', 'ilike', 'volunteer%')
       .order('registered_at', { ascending: true })
 
     if (regError) throw regError
+
+    const cleanRegistrations = (registrations || []).filter((r: any) => {
+      const s = (r.status || '').toLowerCase()
+      return !s.startsWith('volunteer') && s !== 'volunteer'
+    })
 
     const { data: submissions, error: subError } = await supabase
       .from('submissions')
@@ -679,7 +710,7 @@ export async function getEventExportData(eventId: string) {
     return {
       data: {
         event,
-        registrations: registrations || [],
+        registrations: cleanRegistrations,
         submissions: submissions || [],
       },
     }
@@ -1221,20 +1252,165 @@ export async function removeEventVolunteer(registrationId: string, eventId: stri
     await assertAdminOrLeader()
     const adminClient = await createAdminClient()
 
-    // Update status to 'registered'
+    // Delete registration completely (do not convert to normal registered participant)
     const { error } = await adminClient
       .from('event_registrations')
-      .update({ status: 'registered' })
+      .delete()
       .eq('id', registrationId)
 
     if (error) throw error
 
     revalidatePath(`/admin/events/${eventId}`)
     revalidatePath(`/events/${eventId}`)
+    revalidatePath('/my-assignments')
     return { success: true }
   } catch (error: any) {
     console.error('Error in removeEventVolunteer:', error)
     return { error: error.message || 'Failed to remove volunteer' }
+  }
+}
+
+export async function bulkImportEventVolunteersByEmail(eventId: string, emailInput: string) {
+  try {
+    await assertAdminOrLeader()
+    const adminClient = await createAdminClient()
+
+    if (!emailInput || !emailInput.trim()) {
+      throw new Error('Please enter at least one email address.')
+    }
+
+    // Extract all valid emails (from commas, newlines, spaces, semicolons)
+    const emailMatches = emailInput.match(/[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}/g) || []
+    const normalizedEmails = Array.from(new Set(emailMatches.map((e) => e.trim().toLowerCase())))
+
+    if (normalizedEmails.length === 0) {
+      throw new Error('No valid email addresses found in the provided input.')
+    }
+
+    // Fetch event title for notification
+    const { data: event } = await adminClient
+      .from('events')
+      .select('title')
+      .eq('id', eventId)
+      .single()
+
+    // 1. Fetch existing profiles matching emails
+    const { data: allProfiles, error: profErr } = await adminClient
+      .from('profiles')
+      .select('id, email, full_name, roll_number, department, batch')
+
+    if (profErr) throw profErr
+
+    const profileByEmail = new Map<string, any>()
+    for (const p of allProfiles || []) {
+      if (p.email) {
+        profileByEmail.set(p.email.toLowerCase(), p)
+      }
+    }
+
+    const matchedProfiles: any[] = []
+    const notFoundEmails: string[] = []
+
+    for (const email of normalizedEmails) {
+      if (profileByEmail.has(email)) {
+        matchedProfiles.push(profileByEmail.get(email))
+      } else {
+        // Try to pre-provision user if @bitsathy.ac.in
+        const parsed = parseStudentEmail(email)
+        let provisionedProfile: any = null
+
+        if (email.endsWith('@bitsathy.ac.in')) {
+          try {
+            const { data: newAuth, error: authErr } = await adminClient.auth.admin.createUser({
+              email,
+              email_confirm: true,
+              user_metadata: {
+                full_name: parsed?.name || email.split('@')[0],
+              },
+            })
+
+            if (!authErr && newAuth?.user) {
+              const { data: newProf } = await adminClient
+                .from('profiles')
+                .select('id, email, full_name, roll_number, department, batch')
+                .eq('id', newAuth.user.id)
+                .maybeSingle()
+
+              if (newProf) {
+                if (parsed && (!newProf.department || !newProf.batch)) {
+                  await adminClient
+                    .from('profiles')
+                    .update({
+                      department: parsed.department,
+                      batch: parsed.batch,
+                      full_name: parsed.name,
+                    })
+                    .eq('id', newProf.id)
+                }
+                provisionedProfile = newProf
+                profileByEmail.set(email, newProf)
+              }
+            }
+          } catch (e) {
+            console.warn('Could not pre-provision user for email:', email, e)
+          }
+        }
+
+        if (provisionedProfile) {
+          matchedProfiles.push(provisionedProfile)
+        } else {
+          notFoundEmails.push(email)
+        }
+      }
+    }
+
+    if (matchedProfiles.length === 0) {
+      return {
+        error: `None of the ${normalizedEmails.length} email addresses could be matched to members or created. Please verify the emails.`,
+        notFoundEmails,
+      }
+    }
+
+    // 2. Upsert matched members as volunteers in event_registrations
+    const upsertRows = matchedProfiles.map((p) => ({
+      event_id: eventId,
+      user_id: p.id,
+      status: 'volunteer',
+    }))
+
+    const { data: upsertData, error: upsertErr } = await adminClient
+      .from('event_registrations')
+      .upsert(upsertRows, { onConflict: 'event_id,user_id' })
+      .select('*, profiles(id, full_name, email, roll_number, department, batch, phone, avatar_url)')
+
+    if (upsertErr) throw upsertErr
+
+    // 3. Send notifications
+    const notifications = matchedProfiles.map((p) => ({
+      user_id: p.id,
+      title: 'Event Volunteer Assignment 🎉',
+      message: `You have been assigned as an Event Volunteer for "${event?.title || 'Event'}". You can view this assignment in My Assignments.`,
+      type: 'assignment' as const,
+      source_type: 'event',
+      source_id: eventId,
+    }))
+
+    await adminClient.from('notifications').insert(notifications)
+
+    revalidatePath(`/admin/events/${eventId}`)
+    revalidatePath(`/events/${eventId}`)
+    revalidatePath('/my-assignments')
+
+    return {
+      success: true,
+      count: matchedProfiles.length,
+      assignedProfiles: matchedProfiles,
+      notFoundEmails,
+      data: upsertData,
+    }
+  } catch (error: any) {
+    console.error('Error in bulkImportEventVolunteersByEmail:', error)
+    return { error: error.message || 'Failed to bulk import volunteers' }
   }
 }
 
