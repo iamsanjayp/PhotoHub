@@ -997,7 +997,8 @@ export async function getMyAssignments() {
           start_date,
           end_date,
           event_type,
-          banner_url
+          banner_url,
+          deleted_at
         )
       `)
       .eq('user_id', profile.id)
@@ -1005,39 +1006,48 @@ export async function getMyAssignments() {
       .order('registered_at', { ascending: false })
 
     const formattedVolunteers = (volunteerRows || [])
-      .filter((v: any) => !!v.events)
-      .map((v: any) => ({
-        id: v.id,
-        user_id: v.user_id,
-        role: 'Event Volunteer',
-        status: 'accepted',
-        assignment_type: 'event_volunteer',
-        created_at: v.registered_at,
-        apex_requests: {
-          id: v.events.id,
-          event_name: v.events.title,
-          venue: v.events.venue,
-          event_date: v.events.start_date,
-          event_time: v.events.start_date
-            ? new Date(v.events.start_date).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
-            : null,
-          end_time: v.events.end_date
-            ? new Date(v.events.end_date).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
-            : null,
-          status: new Date(v.events.end_date) < new Date() ? 'completed' : 'assigned',
-          coverage_type: 'Event Volunteer',
-          notes: v.events.description,
-          is_event_volunteer: true,
-          event_id: v.events.id,
-          banner_url: v.events.banner_url,
-          event_type: v.events.event_type,
-          apex_media: [],
-          equipment_assignments: [],
-          apex_assignments: [],
-        },
-        equipment: null,
-        apex_attendance: v.attended ? [{ id: v.id, user_id: v.user_id, attended: true }] : [],
-      }))
+      .filter((v: any) => !!v.events && !v.events.deleted_at)
+      .map((v: any) => {
+        const isDutyCompleted = Boolean(v.attended || v.status === 'volunteer_completed')
+        const isEventConcluded = Boolean(v.events.end_date && new Date(v.events.end_date) < new Date())
+        const isDone = isDutyCompleted || isEventConcluded
+
+        return {
+          id: v.id,
+          user_id: v.user_id,
+          role: 'Event Volunteer',
+          status: 'accepted',
+          assignment_type: 'event_volunteer',
+          created_at: v.registered_at,
+          apex_requests: {
+            id: v.events.id,
+            event_name: v.events.title,
+            venue: v.events.venue,
+            event_date: v.events.start_date,
+            event_time: v.events.start_date
+              ? new Date(v.events.start_date).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+              : null,
+            end_time: v.events.end_date
+              ? new Date(v.events.end_date).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+              : null,
+            status: isDone ? 'completed' : 'assigned',
+            duty_completed: isDutyCompleted,
+            event_concluded: isEventConcluded,
+            coverage_type: 'Event Volunteer',
+            notes: v.events.description,
+            is_event_volunteer: true,
+            event_id: v.events.id,
+            registration_id: v.id,
+            banner_url: v.events.banner_url,
+            event_type: v.events.event_type,
+            apex_media: [],
+            equipment_assignments: [],
+            apex_assignments: [],
+          },
+          equipment: null,
+          apex_attendance: isDutyCompleted ? [{ id: v.id, user_id: v.user_id, attended: true }] : [],
+        }
+      })
 
     const combined = [...(data || []), ...formattedVolunteers]
 

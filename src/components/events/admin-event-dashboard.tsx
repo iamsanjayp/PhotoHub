@@ -19,6 +19,8 @@ import {
   assignEventVolunteers,
   bulkImportEventVolunteersByEmail,
   removeEventVolunteer,
+  completeVolunteerDuty,
+  bulkCompleteEventVolunteers,
 } from '@/actions/events'
 import {
   addMissedAttendanceRecord,
@@ -568,6 +570,41 @@ export default function AdminEventDashboard({
     })
   }
 
+  const handleToggleVolunteerDuty = async (regId: string, attended: boolean) => {
+    try {
+      const res = await completeVolunteerDuty(regId, event.id, attended)
+      if (res.error) {
+        toast.error(res.error)
+      } else {
+        toast.success(attended ? 'Volunteer duty marked as completed! Points awarded.' : 'Volunteer duty status updated.')
+        setVolunteers((prev) =>
+          prev.map((v: any) =>
+            v.id === regId ? { ...v, attended, status: attended ? 'volunteer_completed' : 'volunteer' } : v
+          )
+        )
+      }
+    } catch (err: any) {
+      toast.error(err.message || 'Failed to update volunteer duty')
+    }
+  }
+
+  const handleBulkCompleteVolunteers = async () => {
+    if (!confirm('Mark all assigned volunteers as having completed their duties and award attendance points?')) return
+    try {
+      const res = await bulkCompleteEventVolunteers(event.id, true)
+      if (res.error) {
+        toast.error(res.error)
+      } else {
+        toast.success(`Successfully marked ${res.count || 0} volunteer(s) as completed!`)
+        setVolunteers((prev) =>
+          prev.map((v: any) => ({ ...v, attended: true, status: 'volunteer_completed' }))
+        )
+      }
+    } catch (err: any) {
+      toast.error(err.message || 'Failed to mark volunteers completed')
+    }
+  }
+
   return (
     <div className="space-y-8 pb-12">
       {/* Top Header Navigation */}
@@ -666,14 +703,25 @@ export default function AdminEventDashboard({
               </div>
               <div className="flex items-center gap-2 flex-wrap">
                 {volunteers.length > 0 && (
-                  <Button
-                    variant="outline"
-                    onClick={handleExportVolunteers}
-                    className="border-white/10 hover:bg-white/5 text-neutral-300 font-semibold rounded-xl text-xs h-9 px-3 gap-1.5"
-                  >
-                    <Download className="h-3.5 w-3.5 text-cyan-400" />
-                    Export Roster
-                  </Button>
+                  <>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={handleBulkCompleteVolunteers}
+                      className="border-emerald-500/30 hover:bg-emerald-500/10 text-emerald-400 font-bold rounded-xl text-xs h-9 px-3 gap-1.5"
+                    >
+                      <CheckCircle className="h-3.5 w-3.5" />
+                      Mark All Completed
+                    </Button>
+                    <Button
+                      variant="outline"
+                      onClick={handleExportVolunteers}
+                      className="border-white/10 hover:bg-white/5 text-neutral-300 font-semibold rounded-xl text-xs h-9 px-3 gap-1.5"
+                    >
+                      <Download className="h-3.5 w-3.5 text-cyan-400" />
+                      Export Roster
+                    </Button>
+                  </>
                 )}
                 <Button
                   variant="outline"
@@ -749,9 +797,16 @@ export default function AdminEventDashboard({
                             <span className="font-bold text-white text-sm">
                               {v.profiles?.full_name || 'Member'}
                             </span>
-                            <Badge className="bg-cyan-500/15 text-cyan-300 border border-cyan-500/30 text-[10px] font-bold uppercase">
-                              Volunteer
-                            </Badge>
+                            {v.attended || v.status === 'volunteer_completed' ? (
+                              <Badge className="bg-emerald-500/15 text-emerald-300 border border-emerald-500/30 text-[10px] font-bold uppercase gap-1">
+                                <CheckCircle className="h-3 w-3 text-emerald-400" />
+                                Duty Completed
+                              </Badge>
+                            ) : (
+                              <Badge className="bg-cyan-500/15 text-cyan-300 border border-cyan-500/30 text-[10px] font-bold uppercase">
+                                Volunteer Assigned
+                              </Badge>
+                            )}
                           </div>
                           <p className="text-xs text-neutral-400 mt-0.5">
                             {v.profiles?.roll_number ? `${v.profiles.roll_number} • ` : ''}
@@ -761,11 +816,34 @@ export default function AdminEventDashboard({
                         </div>
                       </div>
 
-                      <div className="flex items-center gap-3 shrink-0 self-start sm:self-center">
+                      <div className="flex items-center gap-2 shrink-0 self-start sm:self-center flex-wrap">
                         {v.profiles?.phone && (
-                          <span className="text-xs text-neutral-400 font-mono">
+                          <span className="text-xs text-neutral-400 font-mono mr-1">
                             {v.profiles.phone}
                           </span>
+                        )}
+                        {v.attended || v.status === 'volunteer_completed' ? (
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            onClick={() => handleToggleVolunteerDuty(v.id, false)}
+                            className="h-8 text-xs border-emerald-500/30 text-emerald-400 hover:bg-emerald-500/10 rounded-xl gap-1 font-semibold"
+                            title="Click to mark incomplete"
+                          >
+                            <CheckCircle className="h-3.5 w-3.5 text-emerald-400" />
+                            Completed
+                          </Button>
+                        ) : (
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            onClick={() => handleToggleVolunteerDuty(v.id, true)}
+                            className="h-8 text-xs bg-emerald-500/10 hover:bg-emerald-500/20 text-emerald-400 border border-emerald-500/30 rounded-xl gap-1 font-bold"
+                            title="Mark duty completed and award attendance points"
+                          >
+                            <CheckCircle className="h-3.5 w-3.5" />
+                            Mark Complete
+                          </Button>
                         )}
                         <Button
                           variant="ghost"

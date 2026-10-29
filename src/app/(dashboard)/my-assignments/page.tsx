@@ -12,6 +12,7 @@ import {
   assignTeamMember,
 } from '@/actions/apex'
 import { getMembers } from '@/actions/members'
+import { completeVolunteerDuty } from '@/actions/events'
 import { addMissedAttendanceRecord } from '@/actions/missed-attendance'
 import { useAuth } from '@/providers/auth-provider'
 import { Card, CardContent, CardHeader } from '@/components/ui/card'
@@ -74,6 +75,24 @@ export default function MyAssignmentsPage() {
   const [claimSelectedHours, setClaimSelectedHours] = useState<number[]>([1])
   const [claimRemarks, setClaimRemarks] = useState('')
   const [isClaiming, setIsClaiming] = useState(false)
+  const [completingVolunteerId, setCompletingVolunteerId] = useState<string | null>(null)
+
+  const handleCompleteVolunteerDuty = async (registrationId: string, eventId: string) => {
+    setCompletingVolunteerId(registrationId)
+    try {
+      const res = await completeVolunteerDuty(registrationId, eventId, true)
+      if (res.error) {
+        toast.error(res.error)
+      } else {
+        toast.success('Volunteer duty marked as completed! Points awarded.')
+        queryClient.invalidateQueries({ queryKey: ['my-assignments'] })
+      }
+    } catch (err: any) {
+      toast.error(err.message || 'Failed to complete volunteer duty')
+    } finally {
+      setCompletingVolunteerId(null)
+    }
+  }
 
   const handleClaimSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
@@ -406,9 +425,11 @@ export default function MyAssignmentsPage() {
                         className={cn(
                           'text-[9px] uppercase tracking-wider border font-bold',
                           isEventVolunteer
-                            ? req.status === 'completed'
+                            ? req.duty_completed
                               ? 'border-emerald-500/30 bg-emerald-500/10 text-emerald-400'
-                              : 'border-purple-500/30 bg-purple-500/10 text-purple-400'
+                              : req.event_concluded
+                                ? 'border-neutral-700 bg-neutral-800 text-neutral-400'
+                                : 'border-purple-500/30 bg-purple-500/10 text-purple-400'
                             : req.status === 'ongoing'
                               ? 'border-purple-500/30 bg-purple-500/10 text-purple-400'
                               : req.status === 'assigned'
@@ -418,7 +439,13 @@ export default function MyAssignmentsPage() {
                                   : 'border-white/10'
                         )}
                       >
-                        {isEventVolunteer ? `Event: ${req.status === 'completed' ? 'Concluded' : 'Upcoming'}` : `Shoot: ${req.status}`}
+                        {isEventVolunteer
+                          ? req.duty_completed
+                            ? 'Duty Completed'
+                            : req.event_concluded
+                              ? 'Event Concluded'
+                              : 'Volunteer Active'
+                          : `Shoot: ${req.status}`}
                       </Badge>
                     </div>
 
@@ -427,17 +454,39 @@ export default function MyAssignmentsPage() {
 
                   <div className="flex items-center gap-2 flex-wrap">
                     {isEventVolunteer ? (
-                      <Button
-                        asChild
-                        size="sm"
-                        variant="outline"
-                        className="border-white/10 hover:bg-white/5 text-neutral-300 hover:text-white font-bold rounded-xl h-8 px-3 text-xs gap-1.5"
-                      >
-                        <Link href={`/events/${req.event_id}`}>
-                          <ExternalLink className="h-3.5 w-3.5 text-cyan-400" />
-                          View Event
-                        </Link>
-                      </Button>
+                      <>
+                        {req.duty_completed ? (
+                          <Badge className="bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 text-[10px] font-bold px-3 py-1 rounded-full gap-1.5 flex items-center">
+                            <CheckCircle className="h-3.5 w-3.5" />
+                            Duty Completed (+points)
+                          </Badge>
+                        ) : (
+                          <Button
+                            size="sm"
+                            disabled={completingVolunteerId === assignment.id}
+                            onClick={() => handleCompleteVolunteerDuty(assignment.id, req.event_id)}
+                            className="bg-emerald-500 hover:bg-emerald-400 text-neutral-950 font-bold rounded-xl h-8 px-3 text-xs gap-1.5 shadow-lg shadow-emerald-500/10"
+                          >
+                            {completingVolunteerId === assignment.id ? (
+                              <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                            ) : (
+                              <CheckCircle className="h-3.5 w-3.5" />
+                            )}
+                            Mark Duty Completed
+                          </Button>
+                        )}
+                        <Button
+                          asChild
+                          size="sm"
+                          variant="outline"
+                          className="border-white/10 hover:bg-white/5 text-neutral-300 hover:text-white font-bold rounded-xl h-8 px-3 text-xs gap-1.5"
+                        >
+                          <Link href={`/events/${req.event_id}`}>
+                            <ExternalLink className="h-3.5 w-3.5 text-cyan-400" />
+                            View Event
+                          </Link>
+                        </Button>
+                      </>
                     ) : ['completed', 'delivered'].includes(req.status) ? (
                       <Badge className="bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 text-[10px] font-bold px-3 py-1 rounded-full gap-1.5 flex items-center">
                         <CheckCircle className="h-3.5 w-3.5" />
@@ -540,19 +589,47 @@ export default function MyAssignmentsPage() {
 
                       {/* Right: Volunteer Guidance */}
                       <div className="space-y-4 border-t md:border-t-0 md:border-l border-white/5 pt-4 md:pt-0 md:pl-6">
-                        <div className="p-4 bg-purple-500/5 border border-purple-500/20 rounded-2xl space-y-2">
-                          <div className="flex items-center gap-2 text-purple-300 font-bold text-xs">
-                            <Users className="h-4 w-4 text-purple-400" />
-                            <span>Assigned Event Volunteer</span>
+                        {req.duty_completed ? (
+                          <div className="p-4 bg-emerald-500/10 border border-emerald-500/20 rounded-2xl space-y-2">
+                            <div className="flex items-center gap-2 text-emerald-300 font-bold text-xs">
+                              <ShieldCheck className="h-4 w-4 text-emerald-400" />
+                              <span>Duty Completed & Attendance Verified</span>
+                            </div>
+                            <p className="text-[11px] text-neutral-400 leading-relaxed">
+                              Thank you for serving as an official volunteer coordinator! Your duty attendance has been verified and points have been credited to your club profile.
+                            </p>
                           </div>
-                          <p className="text-[11px] text-neutral-400 leading-relaxed">
-                            You are designated as an official volunteer coordinator for this event. Please coordinate with the core board organizers on the event day for registration desk, crowd management, and logistics support.
-                          </p>
-                        </div>
+                        ) : (
+                          <>
+                            <div className="p-4 bg-purple-500/5 border border-purple-500/20 rounded-2xl space-y-2">
+                              <div className="flex items-center gap-2 text-purple-300 font-bold text-xs">
+                                <Users className="h-4 w-4 text-purple-400" />
+                                <span>Assigned Event Volunteer</span>
+                              </div>
+                              <p className="text-[11px] text-neutral-400 leading-relaxed">
+                                You are designated as an official volunteer coordinator for this event. Please coordinate with the core board organizers on the event day for registration desk, crowd management, and logistics support.
+                              </p>
+                            </div>
+
+                            <Button
+                              onClick={() => handleCompleteVolunteerDuty(assignment.id, req.event_id)}
+                              disabled={completingVolunteerId === assignment.id}
+                              className="w-full bg-emerald-500 hover:bg-emerald-400 text-neutral-950 font-bold rounded-xl h-10 text-xs gap-2 shadow-lg shadow-emerald-500/10"
+                            >
+                              {completingVolunteerId === assignment.id ? (
+                                <Loader2 className="h-4 w-4 animate-spin" />
+                              ) : (
+                                <CheckCircle className="h-4 w-4" />
+                              )}
+                              Mark Duty Completed (+points)
+                            </Button>
+                          </>
+                        )}
 
                         <Button
                           asChild
-                          className="w-full bg-gradient-to-r from-cyan-500 to-teal-500 hover:opacity-90 text-neutral-950 font-bold rounded-xl h-10 text-xs gap-2"
+                          variant="outline"
+                          className="w-full border-white/10 hover:bg-white/5 text-neutral-200 font-bold rounded-xl h-10 text-xs gap-2"
                         >
                           <Link href={`/events/${req.event_id}`}>
                             <ExternalLink className="h-4 w-4" />

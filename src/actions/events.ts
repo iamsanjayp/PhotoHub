@@ -139,8 +139,17 @@ export async function deleteEvent(eventId: string) {
 
     if (error) throw error
 
+    // Also clean up registrations/volunteers for this deleted event
+    await supabase
+      .from('event_registrations')
+      .delete()
+      .eq('event_id', eventId)
+
     revalidatePath('/events')
     revalidatePath('/admin/events')
+    revalidatePath('/my-assignments')
+    revalidatePath(`/events/${eventId}`)
+    revalidatePath(`/admin/events/${eventId}`)
     return { success: true }
   } catch (error: any) {
     console.error('Error in deleteEvent:', error)
@@ -1413,6 +1422,123 @@ export async function bulkImportEventVolunteersByEmail(eventId: string, emailInp
     return { error: error.message || 'Failed to bulk import volunteers' }
   }
 }
+
+// 22. Complete volunteer duty (can be called by the volunteer or admin)
+export async function completeVolunteerDuty(registrationId: string, eventId: string, attended: boolean = true) {
+  try {
+    const profile = await getCurrentProfile()
+    if (!profile) throw new Error('Unauthorized')
+
+    const adminClient = await createAdminClient()
+
+    // Fetch registration
+    const { data: reg, error: fetchErr } = await adminClient
+      .from('event_registrations')
+      .select('id, user_id, event_id, status, attended, events (id, title, points)')
+      .eq('id', registrationId)
+      .single()
+
+    if (fetchErr || !reg) throw new Error('Volunteer assignment not found')
+
+    // Authorization: must be the volunteer themselves OR admin/leader
+    const isAdmin = ['lead', 'core', 'admin'].includes(profile.role)
+    const isOwner = reg.user_id === profile.id
+
+    if (!isAdmin && !isOwner) {
+      throw new Error('You are not authorized to update this volunteer assignment')
+    }
+
+    const { error: updateErr } = await adminClient
+      .from('event_registrations')
+      .update({
+        attended,
+        status: attended ? 'volunteer_completed' : 'volunteer',
+        checked_in_at: attended ? new Date().toISOString() : null,
+      })
+      .eq('id', registrationId)
+
+    if (updateErr) throw updateErr
+
+    if (attended) {
+      await adminClient.from('notifications').insert({
+        user_id: reg.user_id,
+        title: 'Volunteer Duty Completed! 🌟',
+        message: `Thank you for volunteering for "${(reg.events as any)?.title || 'the event'}"! Your contribution has been verified.`,
+        type: 'success',
+        source_type: 'event',
+        source_id: eventId,
+      })
+    }
+
+    await adminClient.rpc('refresh_leaderboard')
+
+    revalidatePath(`/admin/events/${eventId}`)
+    revalidatePath(`/events/${eventId}`)
+    revalidatePath('/my-assignments')
+
+    return { success: true }
+  } catch (error: any) {
+    console.error('Error in completeVolunteerDuty:', error)
+    return { error: error.message || 'Failed to update volunteer duty status' }
+  }
+}
+
+// 23. Admin bulk mark all volunteers for an event as completed
+export async function bulkCompleteEventVolunteers(eventId: string, attended: boolean = true) {
+  try {
+    await assertAdminOrLeader()
+    const adminClient = await createAdminClient()
+
+    const { data: volunteers, error: fetchErr } = await adminClient
+      .from('event_registrations')
+      .select('id, user_id, events (title)')
+      .eq('event_id', eventId)
+      .ilike('status', 'volunteer%')
+
+    if (fetchErr) throw fetchErr
+
+    if (!volunteers || volunteers.length === 0) {
+      return { success: true, count: 0 }
+    }
+
+    const volunteerIds = volunteers.map((v) => v.id)
+
+    const { error: updateErr } = await adminClient
+      .from('event_registrations')
+      .update({
+        attended,
+        status: attended ? 'volunteer_completed' : 'volunteer',
+        checked_in_at: attended ? new Date().toISOString() : null,
+      })
+      .in('id', volunteerIds)
+
+    if (updateErr) throw updateErr
+
+    if (attended) {
+      const notifications = volunteers.map((v) => ({
+        user_id: v.user_id,
+        title: 'Volunteer Duty Completed! 🌟',
+        message: `Thank you for volunteering for "${(v.events as any)?.title || 'the event'}"! Your contribution has been verified.`,
+        type: 'success',
+        source_type: 'event',
+        source_id: eventId,
+      }))
+      await adminClient.from('notifications').insert(notifications)
+    }
+
+    await adminClient.rpc('refresh_leaderboard')
+
+    revalidatePath(`/admin/events/${eventId}`)
+    revalidatePath(`/events/${eventId}`)
+    revalidatePath('/my-assignments')
+
+    return { success: true, count: volunteerIds.length }
+  } catch (error: any) {
+    console.error('Error in bulkCompleteEventVolunteers:', error)
+    return { error: error.message || 'Failed to mark volunteers completed' }
+  }
+}
+
 
 
 
