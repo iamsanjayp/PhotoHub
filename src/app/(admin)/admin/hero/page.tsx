@@ -63,6 +63,10 @@ export default function AdminHeroPage() {
   const [photoDriveFileId, setPhotoDriveFileId] = useState<string | null>(null)
   const [isPhotoSubmitting, setIsPhotoSubmitting] = useState(false)
 
+  // --- Deletion Confirmation Dialog States ---
+  const [photoToDelete, setPhotoToDelete] = useState<any | null>(null)
+  const [linkToDelete, setLinkToDelete] = useState<WebLinkItem | null>(null)
+
   // --- Web Link Modal States ---
   const [isLinkModalOpen, setIsLinkModalOpen] = useState(false)
   const [editingLink, setEditingLink] = useState<WebLinkItem | null>(null)
@@ -120,7 +124,8 @@ export default function AdminHeroPage() {
       }
     },
     onSuccess: () => {
-      toast.success('Gallery photo removed')
+      toast.success('Spotlight photo removed')
+      setPhotoToDelete(null)
       queryClient.invalidateQueries({ queryKey: ['hero-gallery'] })
     },
     onError: (err: any) => {
@@ -184,11 +189,14 @@ export default function AdminHeroPage() {
         const res = await fetch('/api/hero/gallery', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify(payload),
+          body: JSON.stringify({
+            ...payload,
+            seed_id_to_dismiss: editingPhoto?.is_seed ? editingPhoto.id : undefined,
+          }),
         })
         const data = await res.json().catch(() => ({}))
         if (!res.ok || data.error) throw new Error(data.error || 'Failed to add photo')
-        toast.success('Photo added to showcase gallery!')
+        toast.success(editingPhoto?.is_seed ? 'Showcase photo customized!' : 'Photo added to showcase gallery!')
       }
 
       setIsPhotoModalOpen(false)
@@ -211,6 +219,7 @@ export default function AdminHeroPage() {
     },
     onSuccess: () => {
       toast.success('Web link removed')
+      setLinkToDelete(null)
       queryClient.invalidateQueries({ queryKey: ['hero-web-links'] })
     },
     onError: (err: any) => {
@@ -327,44 +336,59 @@ export default function AdminHeroPage() {
           </div>
 
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-            {galleryItems.map((item: any) => (
-              <Card
-                key={item.id}
-                className="group relative overflow-hidden rounded-3xl border border-white/5 bg-neutral-900/40 backdrop-blur-xl transition-all duration-300 hover:border-cyan-500/30"
-              >
-                <div className="relative aspect-[16/10] w-full bg-black/60 overflow-hidden">
-                  <img
-                    src={item.url}
-                    alt={item.title}
-                    className="w-full h-full object-cover transition-transform duration-500 group-hover:scale-105"
-                  />
-                  <div className="absolute top-3 left-3">
-                    <Badge className="bg-black/60 backdrop-blur-md text-cyan-300 border-white/10 text-[10px] font-bold uppercase">
-                      {item.category || 'Featured'}
-                    </Badge>
-                  </div>
-                  {item.is_seed && (
-                    <div className="absolute top-3 right-3">
-                      <Badge className="bg-amber-500/20 text-amber-300 border-amber-500/30 text-[9px]">
-                        Default Seed
+            {galleryItems.length === 0 ? (
+              <div className="col-span-full border border-dashed border-white/10 rounded-3xl p-12 text-center bg-white/[0.01]">
+                <ImageIcon className="h-10 w-10 text-neutral-600 mx-auto mb-3" />
+                <h3 className="text-base font-bold text-white mb-1">No Spotlight Photos</h3>
+                <p className="text-xs text-neutral-400 max-w-sm mx-auto mb-4">
+                  There are currently no featured photographs in the landing page spotlight. Add your favorite campus captures.
+                </p>
+                <Button
+                  onClick={openAddPhotoModal}
+                  className="bg-cyan-500 hover:bg-cyan-400 text-neutral-950 font-bold rounded-xl text-xs gap-1.5 h-9"
+                >
+                  <Plus className="h-4 w-4" />
+                  Add Photo
+                </Button>
+              </div>
+            ) : (
+              galleryItems.map((item: any) => (
+                <Card
+                  key={item.id}
+                  className="group relative overflow-hidden rounded-3xl border border-white/5 bg-neutral-900/40 backdrop-blur-xl transition-all duration-300 hover:border-cyan-500/30"
+                >
+                  <div className="relative aspect-[16/10] w-full bg-black/60 overflow-hidden">
+                    <img
+                      src={item.url}
+                      alt={item.title}
+                      className="w-full h-full object-cover transition-transform duration-500 group-hover:scale-105"
+                    />
+                    <div className="absolute top-3 left-3">
+                      <Badge className="bg-black/60 backdrop-blur-md text-cyan-300 border-white/10 text-[10px] font-bold uppercase">
+                        {item.category || 'Featured'}
                       </Badge>
                     </div>
-                  )}
-                </div>
-
-                <CardContent className="p-5 space-y-3">
-                  <div>
-                    <h3 className="text-base font-bold text-white line-clamp-1">{item.title}</h3>
-                    {item.caption && (
-                      <p className="text-xs text-neutral-400 line-clamp-2 mt-1">{item.caption}</p>
+                    {item.is_seed && (
+                      <div className="absolute top-3 right-3">
+                        <Badge className="bg-amber-500/20 text-amber-300 border-amber-500/30 text-[9px]">
+                          Sample Preset
+                        </Badge>
+                      </div>
                     )}
-                    <p className="text-[11px] text-neutral-500 mt-2 font-medium">
-                      {item.author ? `Photo by ${item.author}` : 'PhotoHub Master Works'}
-                    </p>
                   </div>
 
-                  <div className="flex items-center justify-end gap-2 pt-2 border-t border-white/5">
-                    {!item.is_seed && (
+                  <CardContent className="p-5 space-y-3">
+                    <div>
+                      <h3 className="text-base font-bold text-white line-clamp-1">{item.title}</h3>
+                      {item.caption && (
+                        <p className="text-xs text-neutral-400 line-clamp-2 mt-1">{item.caption}</p>
+                      )}
+                      <p className="text-[11px] text-neutral-500 mt-2 font-medium">
+                        {item.author ? `Photo by ${item.author}` : 'PhotoHub Master Works'}
+                      </p>
+                    </div>
+
+                    <div className="flex items-center justify-end gap-2 pt-2 border-t border-white/5">
                       <Button
                         size="sm"
                         variant="ghost"
@@ -373,25 +397,19 @@ export default function AdminHeroPage() {
                       >
                         <Edit className="h-3.5 w-3.5" /> Edit
                       </Button>
-                    )}
-                    {!item.is_seed && (
                       <Button
                         size="sm"
                         variant="ghost"
-                        onClick={() => {
-                          if (confirm('Delete this photo from hero gallery?')) {
-                            deleteGalleryMutation.mutate(item.id)
-                          }
-                        }}
+                        onClick={() => setPhotoToDelete(item)}
                         className="h-8 text-xs text-red-400 hover:text-red-300 hover:bg-red-500/10 rounded-xl gap-1"
                       >
                         <Trash2 className="h-3.5 w-3.5" /> Delete
                       </Button>
-                    )}
-                  </div>
-                </CardContent>
-              </Card>
-            ))}
+                    </div>
+                  </CardContent>
+                </Card>
+              ))
+            )}
           </div>
         </TabsContent>
 
@@ -452,11 +470,7 @@ export default function AdminHeroPage() {
                   <Button
                     size="sm"
                     variant="ghost"
-                    onClick={() => {
-                      if (confirm(`Delete "${link.title}"?`)) {
-                        deleteLinkMutation.mutate(link.id)
-                      }
-                    }}
+                    onClick={() => setLinkToDelete(link)}
                     className="h-8 text-xs text-red-400 hover:text-red-300 hover:bg-red-500/10 rounded-xl gap-1"
                   >
                     <Trash2 className="h-3.5 w-3.5" /> Delete
@@ -726,6 +740,113 @@ export default function AdminHeroPage() {
               </Button>
             </DialogFooter>
           </form>
+        </DialogContent>
+      </Dialog>
+
+      {/* Delete Photo Confirmation Dialog */}
+      <Dialog open={!!photoToDelete} onOpenChange={(open) => !open && setPhotoToDelete(null)}>
+        <DialogContent className="max-w-md rounded-3xl bg-neutral-950 border border-white/10 p-6">
+          <DialogHeader>
+            <DialogTitle className="text-lg font-bold text-white flex items-center gap-2">
+              <Trash2 className="h-5 w-5 text-red-400" />
+              Remove Spotlight Photo?
+            </DialogTitle>
+            <DialogDescription className="text-xs text-neutral-400 mt-1">
+              Are you sure you want to remove &quot;{photoToDelete?.title}&quot; from the landing page spotlight gallery?
+              {photoToDelete?.cloudinary_public_id ? ' This will also remove the image file from Google Drive.' : ''}
+            </DialogDescription>
+          </DialogHeader>
+
+          {photoToDelete?.url && (
+            <div className="relative aspect-[16/9] w-full rounded-2xl overflow-hidden border border-white/10 my-3">
+              <img src={photoToDelete.url} alt={photoToDelete.title} className="w-full h-full object-cover" />
+            </div>
+          )}
+
+          <DialogFooter className="gap-2 sm:gap-0 pt-2">
+            <Button
+              type="button"
+              variant="ghost"
+              onClick={() => setPhotoToDelete(null)}
+              disabled={deleteGalleryMutation.isPending}
+              className="rounded-xl text-xs"
+            >
+              Cancel
+            </Button>
+            <Button
+              type="button"
+              variant="destructive"
+              onClick={() => {
+                if (photoToDelete) {
+                  deleteGalleryMutation.mutate(photoToDelete.id)
+                }
+              }}
+              disabled={deleteGalleryMutation.isPending}
+              className="rounded-xl text-xs font-bold gap-1.5"
+            >
+              {deleteGalleryMutation.isPending ? (
+                <>
+                  <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                  Removing...
+                </>
+              ) : (
+                <>
+                  <Trash2 className="h-3.5 w-3.5" />
+                  Remove Photo
+                </>
+              )}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Delete Web Link Confirmation Dialog */}
+      <Dialog open={!!linkToDelete} onOpenChange={(open) => !open && setLinkToDelete(null)}>
+        <DialogContent className="max-w-md rounded-3xl bg-neutral-950 border border-white/10 p-6">
+          <DialogHeader>
+            <DialogTitle className="text-lg font-bold text-white flex items-center gap-2">
+              <Trash2 className="h-5 w-5 text-red-400" />
+              Delete Web Link?
+            </DialogTitle>
+            <DialogDescription className="text-xs text-neutral-400 mt-1">
+              Are you sure you want to remove &quot;{linkToDelete?.title}&quot; from official web links?
+            </DialogDescription>
+          </DialogHeader>
+
+          <DialogFooter className="gap-2 sm:gap-0 pt-2">
+            <Button
+              type="button"
+              variant="ghost"
+              onClick={() => setLinkToDelete(null)}
+              disabled={deleteLinkMutation.isPending}
+              className="rounded-xl text-xs"
+            >
+              Cancel
+            </Button>
+            <Button
+              type="button"
+              variant="destructive"
+              onClick={() => {
+                if (linkToDelete) {
+                  deleteLinkMutation.mutate(linkToDelete.id)
+                }
+              }}
+              disabled={deleteLinkMutation.isPending}
+              className="rounded-xl text-xs font-bold gap-1.5"
+            >
+              {deleteLinkMutation.isPending ? (
+                <>
+                  <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                  Deleting...
+                </>
+              ) : (
+                <>
+                  <Trash2 className="h-3.5 w-3.5" />
+                  Delete Link
+                </>
+              )}
+            </Button>
+          </DialogFooter>
         </DialogContent>
       </Dialog>
     </div>

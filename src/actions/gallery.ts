@@ -78,9 +78,63 @@ const DEFAULT_GALLERY_ITEMS: GalleryItem[] = [
   },
 ]
 
+// Dismissed seed photo IDs helper (stored persistently in database)
+async function getDismissedSeedIds(adminClient: any): Promise<string[]> {
+  try {
+    const { data } = await adminClient
+      .from('announcements')
+      .select('content')
+      .eq('title', '__SYSTEM_HERO_DISMISSED_SEEDS__')
+      .maybeSingle()
+
+    if (data?.content) {
+      const parsed = JSON.parse(data.content)
+      if (Array.isArray(parsed)) return parsed
+    }
+  } catch (e) {
+    console.warn('getDismissedSeedIds error:', e)
+  }
+  return []
+}
+
+async function addDismissedSeedId(adminClient: any, id: string) {
+  try {
+    const current = await getDismissedSeedIds(adminClient)
+    if (!current.includes(id)) {
+      const updated = [...current, id]
+      const { data: existing } = await adminClient
+        .from('announcements')
+        .select('id')
+        .eq('title', '__SYSTEM_HERO_DISMISSED_SEEDS__')
+        .maybeSingle()
+
+      if (existing) {
+        await adminClient
+          .from('announcements')
+          .update({ content: JSON.stringify(updated), updated_at: new Date().toISOString() })
+          .eq('id', existing.id)
+      } else {
+        await adminClient
+          .from('announcements')
+          .insert({
+            title: '__SYSTEM_HERO_DISMISSED_SEEDS__',
+            content: JSON.stringify(updated),
+            is_pinned: false,
+            priority: 0,
+          })
+      }
+    }
+  } catch (e) {
+    console.warn('addDismissedSeedId error:', e)
+  }
+}
+
 export async function getGalleryItems() {
   try {
     const adminClient = await createAdminClient()
+    const dismissedSeedIds = await getDismissedSeedIds(adminClient)
+    const remainingSeeds = DEFAULT_GALLERY_ITEMS.filter((i) => !dismissedSeedIds.includes(i.id))
+
     const { data: posts, error } = await adminClient
       .from('posts')
       .select('id, caption, status, is_featured, created_at, post_media(*), profiles:profiles!posts_user_id_fkey(id, full_name, avatar_url)')
@@ -90,14 +144,10 @@ export async function getGalleryItems() {
 
     if (error) {
       console.error('Error fetching featured posts for gallery:', error)
-      return { data: DEFAULT_GALLERY_ITEMS }
+      return { data: remainingSeeds }
     }
 
-    if (!posts || posts.length === 0) {
-      return { data: DEFAULT_GALLERY_ITEMS }
-    }
-
-    const items = posts.map((p: any) => {
+    const items = (posts || []).map((p: any) => {
       const media = p.post_media && p.post_media.length > 0 ? p.post_media[0] : null
       let category = 'Featured'
       let title = p.caption || 'PhotoHub Showcase'
@@ -124,7 +174,13 @@ export async function getGalleryItems() {
       }
     }).filter((i: any) => !!i.url)
 
-    return { data: items.length > 0 ? items : DEFAULT_GALLERY_ITEMS }
+    // If custom featured posts exist, return them
+    if (items.length > 0) {
+      return { data: items }
+    }
+
+    // Otherwise return any default seed items that have not been deleted/dismissed
+    return { data: remainingSeeds }
   } catch (error: any) {
     console.error('getGalleryItems error:', error)
     return { data: DEFAULT_GALLERY_ITEMS }
@@ -137,6 +193,7 @@ export async function createGalleryItem(input: {
   image_url: string
   caption?: string
   drive_file_id?: string | null
+  seed_id_to_dismiss?: string | null
 }) {
   try {
     const profile = await getCurrentProfile()
@@ -149,6 +206,12 @@ export async function createGalleryItem(input: {
     }
 
     const adminClient = await createAdminClient()
+
+    // If this upload is replacing a seed photo, dismiss the seed photo permanently
+    if (input.seed_id_to_dismiss) {
+      await addDismissedSeedId(adminClient, input.seed_id_to_dismiss)
+    }
+
     const categoryTag = input.category ? `[${input.category.trim()}] ` : ''
     const fullCaption = `${categoryTag}${input.title.trim()}${input.caption ? ` - ${input.caption.trim()}` : ''}`
 
@@ -203,6 +266,13 @@ export async function deleteGalleryItem(postId: string) {
     }
 
     const adminClient = await createAdminClient()
+
+    // If it's a seed photo (e.g. default-1, default-2, etc.), persist it as dismissed
+    const isUuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(postId)
+    if (!isUuid) {
+      await addDismissedSeedId(adminClient, postId)
+      return { success: true }
+    }
 
     // 1. Delete associated media from Google Drive if stored
     try {

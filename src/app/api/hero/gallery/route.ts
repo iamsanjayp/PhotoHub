@@ -21,7 +21,7 @@ export async function POST(request: NextRequest) {
     }
 
     const body = await request.json()
-    const { title, category, image_url, caption, drive_file_id } = body
+    const { title, category, image_url, caption, drive_file_id, seed_id_to_dismiss } = body
 
     if (!title || !title.trim()) {
       return NextResponse.json({ error: 'Photo title is required' }, { status: 400 })
@@ -36,6 +36,7 @@ export async function POST(request: NextRequest) {
       image_url,
       caption,
       drive_file_id,
+      seed_id_to_dismiss,
     })
 
     if (result.error) {
