@@ -68,6 +68,7 @@ import {
   Plus,
   GraduationCap,
   Copy,
+  CheckCircle,
   CheckCircle2,
   ThumbsUp,
   ThumbsDown,
@@ -473,7 +474,12 @@ export default function AdminEventDashboard({
         if (res.data) {
           setVolunteers((prev) => {
             const existingIds = new Set(prev.map((v: any) => v.id))
-            const newRows = (res.data || []).filter((d: any) => !existingIds.has(d.id))
+            const newRows = (res.data || [])
+              .filter((d: any) => !existingIds.has(d.id))
+              .map((d: any) => ({
+                ...d,
+                profiles: Array.isArray(d.profiles) ? d.profiles[0] : (d.profiles || null),
+              }))
             return [...prev, ...newRows]
           })
         }
@@ -508,7 +514,12 @@ export default function AdminEventDashboard({
         if (res.data) {
           setVolunteers((prev) => {
             const existingIds = new Set(prev.map((v: any) => v.id))
-            const newRows = (res.data || []).filter((d: any) => !existingIds.has(d.id))
+            const newRows = (res.data || [])
+              .filter((d: any) => !existingIds.has(d.id))
+              .map((d: any) => ({
+                ...d,
+                profiles: Array.isArray(d.profiles) ? d.profiles[0] : (d.profiles || null),
+              }))
             return [...prev, ...newRows]
           })
         }

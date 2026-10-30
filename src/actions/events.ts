@@ -1188,7 +1188,7 @@ export async function getEventVolunteers(eventId: string) {
         status: r.status,
         attended: r.attended,
         registered_at: r.registered_at,
-        profiles: r.profiles,
+        profiles: Array.isArray(r.profiles) ? r.profiles[0] : (r.profiles || null),
       }
     })
 
@@ -1243,7 +1243,8 @@ export async function assignEventVolunteers(eventId: string, userIds: string[]) 
     revalidatePath(`/admin/events/${eventId}`)
     revalidatePath(`/events/${eventId}`)
     revalidatePath('/my-assignments')
-    return { success: true, data }
+    const normalizedData = (data || []).map((r: any) => ({ ...r, profiles: Array.isArray(r.profiles) ? r.profiles[0] : (r.profiles || null) }))
+    return { success: true, data: normalizedData }
   } catch (error: any) {
     console.error('Error in assignEventVolunteers:', error)
     return { error: error.message || 'Failed to assign event volunteers' }
@@ -1415,7 +1416,7 @@ export async function bulkImportEventVolunteersByEmail(eventId: string, emailInp
       count: matchedProfiles.length,
       assignedProfiles: matchedProfiles,
       notFoundEmails,
-      data: upsertData,
+      data: (upsertData || []).map((r: any) => ({ ...r, profiles: Array.isArray(r.profiles) ? r.profiles[0] : (r.profiles || null) })),
     }
   } catch (error: any) {
     console.error('Error in bulkImportEventVolunteersByEmail:', error)
